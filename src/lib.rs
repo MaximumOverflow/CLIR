@@ -18,93 +18,110 @@ pub enum ParsingError {
 
 #[derive(Clone)]
 pub struct ZeroCopyReader<'l> {
-    bytes: &'l [u8],
-    position: usize,
+	bytes: &'l [u8],
+	position: usize,
 }
 
 impl<'l> ZeroCopyReader<'l> {
-    pub fn new(bytes: &'l [u8]) -> Self {
-        Self { bytes, position: 0 }
-    }
+	pub fn new(bytes: &'l [u8]) -> Self {
+		Self { bytes, position: 0 }
+	}
 
-    pub fn position(&self) -> usize {
-        self.position
-    }
+	pub fn position(&self) -> usize {
+		self.position
+	}
 
-    pub fn seek(&mut self, position: usize) -> Result<usize, ParsingError> {
-        let prev = self.position;
-        if position < self.bytes.len() {
-            self.position = position;
-            Ok(prev)
-        } else {
-            Err(UnexpectedEndOfStream)
-        }
-    }
+	pub fn remaining(&self) -> usize {
+		self.bytes.len() - self.position
+	}
 
-    pub fn skip(&mut self, count: usize) -> Result<usize, ParsingError> {
-        if self.position + count >= self.bytes.len() {
-            Err((UnexpectedEndOfStream))
-        } else {
-            let prev = self.position;
-            self.position += count;
-            Ok(prev)
-        }
-    }
+	pub fn seek(&mut self, position: usize) -> Result<usize, ParsingError> {
+		let prev = self.position;
+		if position < self.bytes.len() {
+			self.position = position;
+			Ok(prev)
+		} else {
+			Err(UnexpectedEndOfStream)
+		}
+	}
 
-    pub fn read<T>(&mut self) -> Result<&'l T, ParsingError> {
-        if self.position + size_of::<T>() > self.bytes.len() {
-            return Err(UnexpectedEndOfStream);
-        }
+	pub fn skip(&mut self, count: usize) -> Result<usize, ParsingError> {
+		if self.position + count >= self.bytes.len() {
+			Err(UnexpectedEndOfStream)
+		} else {
+			let prev = self.position;
+			self.position += count;
+			Ok(prev)
+		}
+	}
 
-        unsafe {
-            let ptr = self.bytes.as_ptr().add(self.position);
+	pub fn read<T>(&mut self) -> Result<&'l T, ParsingError> {
+		if self.position + size_of::<T>() > self.bytes.len() {
+			return Err(UnexpectedEndOfStream);
+		}
 
-            if ptr.align_offset(align_of::<T>()) != 0 {
-                return Err(UnalignedRead);
-            }
+		unsafe {
+			let ptr = self.bytes.as_ptr().add(self.position);
 
-            let val = &*(ptr as *const T);
-            self.position += size_of::<T>();
-            Ok(val)
-        }
-    }
+			if ptr.align_offset(align_of::<T>()) != 0 {
+				return Err(UnalignedRead);
+			}
 
-    pub fn read_slice<T>(&mut self, count: usize) -> Result<&'l [T], ParsingError> {
-        if self.position + size_of::<T>() * count > self.bytes.len() {
-            return Err(UnexpectedEndOfStream);
-        }
+			let val = &*(ptr as *const T);
+			self.position += size_of::<T>();
+			Ok(val)
+		}
+	}
 
-        unsafe {
-            let ptr = self.bytes.as_ptr().add(self.position);
+	pub fn read_unaligned<T>(&mut self) -> Result<T, ParsingError> {
+		if self.position + size_of::<T>() > self.bytes.len() {
+			return Err(UnexpectedEndOfStream);
+		}
 
-            if ptr.align_offset(align_of::<T>()) != 0 {
-                return Err(UnalignedRead);
-            }
+		unsafe {
+			let ptr = self.bytes.as_ptr().add(self.position);
+			self.position += size_of::<T>();
 
-            let val = std::slice::from_raw_parts(ptr as *const T, count);
-            self.position += size_of::<T>() * count;
-            Ok(val)
-        }
-    }
+			Ok(std::ptr::read_unaligned(ptr as *const T))
+		}
+	}
 
-    pub fn read_until(&mut self, byte: u8) -> &'l [u8] {
-        let start = self.position;
-        for b in &self.bytes[start..] {
-            self.position += 1;
-            if *b == byte {
-                break;
-            }
-        }
+	pub fn read_slice<T>(&mut self, count: usize) -> Result<&'l [T], ParsingError> {
+		if self.position + size_of::<T>() * count > self.bytes.len() {
+			return Err(UnexpectedEndOfStream);
+		}
 
-        &self.bytes[start..self.position]
-    }
+		unsafe {
+			let ptr = self.bytes.as_ptr().add(self.position);
 
-    pub(crate) fn read_index(&mut self, size: MetadataIndexSize) -> Result<MetadataIndex, ParsingError> {
-        let value = match size {
-            MetadataIndexSize::Slim => *self.read::<u16>()? as usize,
-            MetadataIndexSize::Fat => *self.read::<u32>()? as usize,
-        };
+			if ptr.align_offset(align_of::<T>()) != 0 {
+				return Err(UnalignedRead);
+			}
 
-        Ok(MetadataIndex(value))
-    }
+			let val = std::slice::from_raw_parts(ptr as *const T, count);
+			self.position += size_of::<T>() * count;
+			Ok(val)
+		}
+	}
+
+	pub fn read_until(&mut self, byte: u8) -> &'l [u8] {
+		let start = self.position;
+		for b in &self.bytes[start..] {
+			self.position += 1;
+			if *b == byte {
+				break;
+			}
+		}
+
+		&self.bytes[start..self.position]
+	}
+
+	pub(crate) fn read_index(&mut self, size: MetadataIndexSize) -> Result<MetadataIndex, ParsingError> {
+		let value = match size {
+			MetadataIndexSize::Slim => *self.read::<u16>()? as usize,
+			MetadataIndexSize::Fat => *self.read::<u32>()? as usize,
+		};
+
+		Ok(MetadataIndex(value))
+	}
 }
