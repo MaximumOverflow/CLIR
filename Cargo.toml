@@ -2,10 +2,17 @@
 name = "clir"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+categories = ["parsing"]
+keywords = ["parser", "parsing"]
+repository = "https://github.com/MaximumOverflow/CLIR"
+description = "An experimental CLI assembly parser written in Rust."
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+uuid = "1.2.2"
 indoc = "1.0.8"
+bitvec = "1.0.1"
 align-data = "0.1.0"
 strum = { version = "0.24", features = ["derive"] }

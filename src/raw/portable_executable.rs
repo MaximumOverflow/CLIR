@@ -1,7 +1,9 @@
 use std::ffi::c_char;
+use crate::__impl_clone_from_byte_stream;
+use crate::raw::{ByteStream, Error, FromByteStream};
 
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PeHeader {
 	pub machine: u16,
 	pub number_of_sections: u16,
@@ -13,7 +15,7 @@ pub struct PeHeader {
 }
 
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PeOptionalHeader {
 	pub standard_fields: StandardFields,
 	pub nt_specific_fields: NTSpecificFields,
@@ -21,7 +23,7 @@ pub struct PeOptionalHeader {
 }
 
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct StandardFields {
 	pub magic: u16,
 	pub l_major: u8,
@@ -35,7 +37,7 @@ pub struct StandardFields {
 }
 
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct NTSpecificFields {
 	pub image_base: u32,
 	pub section_alignment: u32,
@@ -61,14 +63,14 @@ pub struct NTSpecificFields {
 }
 
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DataDirectory {
 	pub rva: u32,
 	pub size: u32,
 }
 
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DataDirectories {
 	pub export_table: DataDirectory,
 	pub import_table: DataDirectory,
@@ -89,7 +91,7 @@ pub struct DataDirectories {
 }
 
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SectionHeader {
 	pub name: u64,
 	pub virtual_size: u32,
@@ -113,7 +115,7 @@ impl SectionHeader {
 }
 
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ImportTable {
 	pub import_lookup_table_rva: u32,
 	pub date_time_stamp: i32,
@@ -122,6 +124,17 @@ pub struct ImportTable {
 	pub import_address_table_rva: u32,
 	end_padding: [u8; 20],
 }
+
+__impl_clone_from_byte_stream!(
+	PeHeader,
+	PeOptionalHeader,
+	StandardFields,
+	NTSpecificFields,
+	DataDirectory,
+	DataDirectories,
+	SectionHeader,
+	ImportTable
+);
 
 pub mod pe_header_characteristics {
 	pub const IMAGE_FILE_RELOCS_STRIPPED: u16 = 0x0001;
