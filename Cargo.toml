@@ -1,0 +1,11 @@
+[package]
+name = "cilp"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+indoc = "1.0.8"
+align-data = "0.1.0"
+strum = { version = "0.24", features = ["derive"] }
