@@ -1,5 +1,6 @@
-pub use crate::raw::assembly_flags::AssemblyFlags;
 pub use type_attributes::TypeAttributes;
+pub use assembly_flags::AssemblyFlags;
+pub use field_flags::FieldFlags;
 use strum::EnumIter;
 use crate::raw::*;
 
@@ -500,6 +501,95 @@ pub mod assembly_flags {
 	pub const RETARGETABLE: AssemblyFlags = 0x0100;
 	pub const DISABLE_JIT_COMPILE_OPTIMIZER: AssemblyFlags = 0x4000;
 	pub const ENABLE_JIT_COMPILE_TRACKING: AssemblyFlags = 0x8000;
+}
+
+// #####################
+// ### TypeDef Table ###
+// #####################
+
+pub struct FieldTable<'l> {
+	bytes: &'l [u8],
+	str_size: MetadataIndexSize,
+	blob_size: MetadataIndexSize,
+}
+
+pub struct Field {
+	flags: FieldFlags,
+	name: MetadataIndex,
+	signature: MetadataIndex,
+}
+
+pub struct FieldIterator<'l> {
+	reader: ByteStream<'l>,
+	str_size: MetadataIndexSize,
+	blob_size: MetadataIndexSize,
+}
+
+impl<'l> MetadataTable<'l> for FieldTable<'l> {
+	fn cli_identifier() -> TableKind {
+		TableKind::Field
+	}
+
+	fn row_size(tables: &TableHeap) -> usize {
+		let b = BlobHeap::idx_size(tables) as usize;
+		let s = StringHeap::idx_size(tables) as usize;
+		2 + s + b
+	}
+
+	fn new(bytes: &'l [u8], tables: &TableHeap) -> Result<Self, Error> {
+		Ok(Self {
+			bytes,
+			blob_size: BlobHeap::idx_size(tables),
+			str_size: StringHeap::idx_size(tables),
+		})
+	}
+}
+
+impl FieldTable<'_> {
+	pub fn iter(&self) -> FieldIterator {
+		FieldIterator {
+			reader: ByteStream::new(self.bytes),
+			str_size: self.str_size,
+			blob_size: self.blob_size,
+		}
+	}
+}
+
+impl Field {
+	pub fn flags(&self) -> FieldFlags {
+		self.flags
+	}
+
+	pub fn name(&self) -> MetadataIndex {
+		self.name
+	}
+
+	pub fn signature(&self) -> MetadataIndex {
+		self.signature
+	}
+}
+
+impl Iterator for FieldIterator<'_> {
+	type Item = Result<Field, Error>;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		fn parse(this: &mut FieldIterator) -> Result<Field, Error> {
+			Ok(Field {
+				flags: this.reader.read::<FieldFlags>()?,
+				name: this.reader.read_index(this.str_size)?,
+				signature: this.reader.read_index(this.blob_size)?,
+			})
+		}
+
+		match self.reader.remaining() {
+			0 => None,
+			_ => Some(parse(self)),
+		}
+	}
+}
+
+pub mod field_flags {
+	pub type FieldFlags = u16;
 }
 
 pub(crate) mod private {

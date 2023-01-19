@@ -214,6 +214,7 @@ impl<'l> TableHeap<'l> {
 
 	pub fn row_size(&self, table: TableKind) -> usize {
 		match table {
+			TableKind::Field => FieldTable::row_size(self),
 			TableKind::Module => ModuleTable::row_size(self),
 			TableKind::TypeRef => TypeRefTable::row_size(self),
 			TableKind::TypeDef => TypeDefTable::row_size(self),
