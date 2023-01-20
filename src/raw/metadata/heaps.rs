@@ -26,7 +26,7 @@ impl<'l> MetadataHeap<'l> for StringHeap<'l> {
 }
 
 impl StringHeap<'_> {
-	pub fn get_string_at(&self, index: MetadataIndex) -> &str {
+	pub fn get_string(&self, index: MetadataIndex) -> &str {
 		let bytes = &self.bytes[index.0..];
 		let bytes = &bytes[..bytes.iter().position(|c| *c == 0).unwrap_or(bytes.len())];
 		std::str::from_utf8(bytes).unwrap()
@@ -84,6 +84,31 @@ impl<'l> MetadataHeap<'l> for BlobHeap<'l> {
 			true => MetadataIndexSize::Fat,
 			false => MetadataIndexSize::Slim,
 		}
+	}
+}
+
+impl<'l> BlobHeap<'l> {
+	pub fn get_blob(&self, index: MetadataIndex) -> Result<&'l [u8], Error> {
+		let mut reader = ByteStream::new(self.bytes);
+		reader.seek(index.0)?;
+
+		let length = {
+			let byte_0 = reader.read::<u8>()?;
+			if byte_0 & 0x80 == 0 {
+				(byte_0 & 0x7F) as usize
+			} else if byte_0 & 0xC0 == 0x80 {
+				let byte_1 = reader.read::<u8>()?;
+				(((byte_0 & 0x3F) as usize) << 8) + byte_1 as usize
+			} else if byte_0 & 0xE0 == 0xC0 {
+				let byte_1 = reader.read::<u8>()?;
+				let byte_2 = reader.read::<u8>()?;
+				(((byte_0 & 0x3F) as usize) << 16) + ((byte_1 as usize) << 8) + byte_2 as usize
+			} else {
+				return Err(Error::InvalidData);
+			}
+		};
+
+		reader.read_slice::<u8>(length)
 	}
 }
 
@@ -149,7 +174,7 @@ impl<'l> TableHeap<'l> {
 		if !self.has_table(T::cli_identifier()) {
 			return Ok(None);
 		}
-		
+
 		let mut reader = ByteStream::new(self.bytes);
 		reader.skip(24 + 4 * self.table_count())?;
 
@@ -192,14 +217,14 @@ impl<'l> TableHeap<'l> {
 	fn table_count(&self) -> usize {
 		self.valid().count_ones()
 	}
-	
+
 	fn rows(&self) -> &[u32] {
 		let count = self.table_count();
 		let bytes = &self.bytes[24..24 + 4 * count];
 		unsafe { std::slice::from_raw_parts(bytes.as_ptr() as *const u32, count) }
 	}
 
-	 pub(crate) fn row_count(&self, table: TableKind) -> usize {
+	pub(crate) fn row_count(&self, table: TableKind) -> usize {
 		if !self.has_table(table) {
 			return 0;
 		}
@@ -218,12 +243,18 @@ impl<'l> TableHeap<'l> {
 
 	fn row_size(&self, table: TableKind) -> usize {
 		match table {
+			TableKind::Param => ParamTable::calc_row_size(self),
 			TableKind::Field => FieldTable::calc_row_size(self),
 			TableKind::Module => ModuleTable::calc_row_size(self),
 			TableKind::TypeRef => TypeRefTable::calc_row_size(self),
 			TableKind::TypeDef => TypeDefTable::calc_row_size(self),
 			TableKind::Assembly => AssemblyTable::calc_row_size(self),
+			TableKind::Constant => MethodDefTable::calc_row_size(self),
+			TableKind::MemberRef => MemberRefTable::calc_row_size(self),
 			TableKind::MethodDef => MethodDefTable::calc_row_size(self),
+			TableKind::InterfaceImpl => InterfaceImplTable::calc_row_size(self),
+			TableKind::CustomAttribute => CustomAttributeTable::calc_row_size(self),
+			TableKind::StandAloneSig => StandAloneSignatureTable::calc_row_size(self),
 			_ => unimplemented!("Unimplemented table {:?}", table),
 		}
 	}
