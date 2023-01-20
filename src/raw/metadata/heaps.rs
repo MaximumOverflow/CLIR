@@ -145,7 +145,7 @@ impl<'l> TableHeap<'l> {
 		self.valid().get(kind as usize).as_deref().cloned().unwrap_or(false)
 	}
 
-	pub fn get_table<T: MetadataTable<'l>>(&self) -> Result<Option<T>, Error> {
+	pub fn get_table<T: MetadataTableImpl<'l>>(&self) -> Result<Option<T>, Error> {
 		if !self.has_table(T::cli_identifier()) {
 			return Ok(None);
 		}
@@ -218,12 +218,12 @@ impl<'l> TableHeap<'l> {
 
 	fn row_size(&self, table: TableKind) -> usize {
 		match table {
-			TableKind::Field => FieldTable::row_size(self),
-			TableKind::Module => ModuleTable::row_size(self),
-			TableKind::TypeRef => TypeRefTable::row_size(self),
-			TableKind::TypeDef => TypeDefTable::row_size(self),
-			TableKind::Assembly => AssemblyTable::row_size(self),
-			TableKind::MethodDef => MethodDefTable::row_size(self),
+			TableKind::Field => FieldTable::calc_row_size(self),
+			TableKind::Module => ModuleTable::calc_row_size(self),
+			TableKind::TypeRef => TypeRefTable::calc_row_size(self),
+			TableKind::TypeDef => TypeDefTable::calc_row_size(self),
+			TableKind::Assembly => AssemblyTable::calc_row_size(self),
+			TableKind::MethodDef => MethodDefTable::calc_row_size(self),
 			_ => unimplemented!("Unimplemented table {:?}", table),
 		}
 	}
