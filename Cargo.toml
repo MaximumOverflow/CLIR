@@ -1,17 +1,23 @@
 [package]
-name = "clir"
+name = "cli-toolkit"
 license = "MIT"
 edition = "2021"
 version = "0.1.0"
 readme = "README.md"
 categories = ["parsing"]
 keywords = ["parser", "parsing"]
-repository = "https://github.com/MaximumOverflow/CLIR"
-description = "An experimental CLI assembly parser written in Rust."
-
 exclude = [".gitignore", "rustfmt.toml"]
+repository = "https://github.com/MaximumOverflow/cli-toolkit"
+description = "An experimental Rust library for interfacing with Microsoft's CLI assembly format."
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[features]
+read = []
+
+[[bin]]
+name = "cli-toolkit"
+required-features = ["read"]
 
 [dependencies]
 uuid = "1.2.2"

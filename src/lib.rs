@@ -1,2 +1,2 @@
-// #![allow(unused)]
+#[cfg(feature = "read")]
 pub mod raw;

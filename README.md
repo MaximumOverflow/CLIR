@@ -1,2 +1,2 @@
-# CLIR - Common Language Infrastructure Reader
-An experimental CLI assembly parser written in Rust.
+# CLI-Toolkit
+An experimental Rust library for interfacing with Microsoft's CLI assembly format.
