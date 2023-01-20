@@ -34,7 +34,7 @@ pub(crate) fn get_coded_index_size(kind: CodedIndexKind, tables_heap: &TableHeap
 		CodedIndexKind::HasCustomAttribute => (
 			5,
 			&[
-				TableKind::Method,
+				TableKind::MethodDef,
 				TableKind::Field,
 				TableKind::TypeRef,
 				TableKind::TypeDef,
@@ -59,22 +59,22 @@ pub(crate) fn get_coded_index_size(kind: CodedIndexKind, tables_heap: &TableHeap
 			],
 		),
 		CodedIndexKind::HasFieldMarshal => (1, &[TableKind::Field, TableKind::Param]),
-		CodedIndexKind::HasDeclSecurity => (2, &[TableKind::TypeDef, TableKind::Method, TableKind::Assembly]),
+		CodedIndexKind::HasDeclSecurity => (2, &[TableKind::TypeDef, TableKind::MethodDef, TableKind::Assembly]),
 		CodedIndexKind::MemberRefParent => (
 			3,
 			&[
 				TableKind::TypeDef,
 				TableKind::TypeRef,
 				TableKind::ModuleRef,
-				TableKind::Method,
+				TableKind::MethodDef,
 				TableKind::TypeSpec,
 			],
 		),
 		CodedIndexKind::HasSemantics => (1, &[TableKind::Event, TableKind::Property]),
-		CodedIndexKind::MethodDefOrRef => (1, &[TableKind::Method, TableKind::MemberRef]),
-		CodedIndexKind::MemberForwarded => (1, &[TableKind::Field, TableKind::Method]),
+		CodedIndexKind::MethodDefOrRef => (1, &[TableKind::MethodDef, TableKind::MemberRef]),
+		CodedIndexKind::MemberForwarded => (1, &[TableKind::Field, TableKind::MethodDef]),
 		CodedIndexKind::Implementation => (2, &[TableKind::File, TableKind::AssemblyRef, TableKind::ExportedType]),
-		CodedIndexKind::CustomAttributeType => (3, &[TableKind::Method, TableKind::MemberRef]),
+		CodedIndexKind::CustomAttributeType => (3, &[TableKind::MethodDef, TableKind::MemberRef]),
 		CodedIndexKind::ResolutionScope => (
 			2,
 			&[
@@ -84,11 +84,11 @@ pub(crate) fn get_coded_index_size(kind: CodedIndexKind, tables_heap: &TableHeap
 				TableKind::TypeRef,
 			],
 		),
-		CodedIndexKind::TypeOrMethodDef => (1, &[TableKind::TypeDef, TableKind::Method]),
+		CodedIndexKind::TypeOrMethodDef => (1, &[TableKind::TypeDef, TableKind::MethodDef]),
 		CodedIndexKind::HasCustomDebugInformation => (
 			5,
 			&[
-				TableKind::Method,
+				TableKind::MethodDef,
 				TableKind::Field,
 				TableKind::TypeRef,
 				TableKind::TypeDef,

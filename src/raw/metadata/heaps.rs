@@ -141,31 +141,15 @@ impl<'l> TableHeap<'l> {
 		self.bytes[5]
 	}
 
-	pub fn heap_sizes(&self) -> BitArray<[u8; 1]> {
-		BitArray::new([self.bytes[6]])
-	}
-
-	pub fn valid(&self) -> BitArray<[u64; 1]> {
-		let mut valid = [0; 8];
-		valid.copy_from_slice(&self.bytes[8..16]);
-		BitArray::new([u64::from_le_bytes(valid)])
-	}
-
-	pub fn sorted(&self) -> BitArray<[u64; 1]> {
-		let mut valid = [0; 8];
-		valid.copy_from_slice(&self.bytes[16..24]);
-		BitArray::new([u64::from_le_bytes(valid)])
-	}
-
-	pub fn table_count(&self) -> usize {
-		self.valid().count_ones()
-	}
-
 	pub fn has_table(&self, kind: TableKind) -> bool {
 		self.valid().get(kind as usize).as_deref().cloned().unwrap_or(false)
 	}
 
 	pub fn get_table<T: MetadataTable<'l>>(&self) -> Result<Option<T>, Error> {
+		if !self.has_table(T::cli_identifier()) {
+			return Ok(None);
+		}
+		
 		let mut reader = ByteStream::new(self.bytes);
 		reader.skip(24 + 4 * self.table_count())?;
 
@@ -189,13 +173,33 @@ impl<'l> TableHeap<'l> {
 		Ok(None)
 	}
 
-	pub fn rows(&self) -> &[u32] {
+	fn heap_sizes(&self) -> BitArray<[u8; 1]> {
+		BitArray::new([self.bytes[6]])
+	}
+
+	fn valid(&self) -> BitArray<[u64; 1]> {
+		let mut valid = [0; 8];
+		valid.copy_from_slice(&self.bytes[8..16]);
+		BitArray::new([u64::from_le_bytes(valid)])
+	}
+
+	fn sorted(&self) -> BitArray<[u64; 1]> {
+		let mut valid = [0; 8];
+		valid.copy_from_slice(&self.bytes[16..24]);
+		BitArray::new([u64::from_le_bytes(valid)])
+	}
+
+	fn table_count(&self) -> usize {
+		self.valid().count_ones()
+	}
+	
+	fn rows(&self) -> &[u32] {
 		let count = self.table_count();
 		let bytes = &self.bytes[24..24 + 4 * count];
 		unsafe { std::slice::from_raw_parts(bytes.as_ptr() as *const u32, count) }
 	}
 
-	pub fn row_count(&self, table: TableKind) -> usize {
+	 pub(crate) fn row_count(&self, table: TableKind) -> usize {
 		if !self.has_table(table) {
 			return 0;
 		}
@@ -212,18 +216,19 @@ impl<'l> TableHeap<'l> {
 		return self.rows()[index] as usize;
 	}
 
-	pub fn row_size(&self, table: TableKind) -> usize {
+	fn row_size(&self, table: TableKind) -> usize {
 		match table {
 			TableKind::Field => FieldTable::row_size(self),
 			TableKind::Module => ModuleTable::row_size(self),
 			TableKind::TypeRef => TypeRefTable::row_size(self),
 			TableKind::TypeDef => TypeDefTable::row_size(self),
 			TableKind::Assembly => AssemblyTable::row_size(self),
+			TableKind::MethodDef => MethodDefTable::row_size(self),
 			_ => unimplemented!("Unimplemented table {:?}", table),
 		}
 	}
 
-	pub fn table_idx_size(&self, table: TableKind) -> MetadataIndexSize {
+	pub(crate) fn table_idx_size(&self, table: TableKind) -> MetadataIndexSize {
 		match self.row_count(table) <= u16::MAX as usize {
 			true => MetadataIndexSize::Slim,
 			false => MetadataIndexSize::Fat,
@@ -257,9 +262,9 @@ impl Debug for TableHeap<'_> {
 			write!(f, "TableHeap {{ ")?;
 			write!(f, "major_version: {}, ", self.major_version())?;
 			write!(f, "minor_version: {}, ", self.minor_version())?;
-			write!(f, "heap_sizes: 0b{:b}, ", self.heap_sizes())?;
-			write!(f, "valid: 0b{:b}, ", self.valid())?;
-			write!(f, "sorted: 0b{:b}, ", self.sorted())?;
+			write!(f, "heap_sizes: {:b}, ", self.heap_sizes())?;
+			write!(f, "valid: {:b}, ", self.valid())?;
+			write!(f, "sorted: {:b}, ", self.sorted())?;
 			write!(f, "rows: {:?}, ", self.rows())?;
 			write!(f, "}}")?;
 			Ok(())

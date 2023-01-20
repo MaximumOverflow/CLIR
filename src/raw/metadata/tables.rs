@@ -1,5 +1,7 @@
+pub use method_impl_flags::MethodImplFlags;
 pub use type_attributes::TypeAttributes;
 pub use assembly_flags::AssemblyFlags;
+pub use method_flags::MethodFlags;
 pub use field_flags::FieldFlags;
 use strum::EnumIter;
 use crate::raw::*;
@@ -12,7 +14,7 @@ pub enum TableKind {
 	FieldPtr = 0x03,
 	Field = 0x04,
 	MethodPtr = 0x05,
-	Method = 0x06,
+	MethodDef = 0x06,
 	ParamPtr = 0x07,
 	Param = 0x08,
 	InterfaceImpl = 0x09,
@@ -284,7 +286,7 @@ impl<'l> MetadataTable<'l> for TypeDefTable<'l> {
 	fn row_size(tables: &TableHeap) -> usize {
 		let s = StringHeap::idx_size(tables) as usize;
 		let f = tables.table_idx_size(TableKind::Field) as usize;
-		let m = tables.table_idx_size(TableKind::Method) as usize;
+		let m = tables.table_idx_size(TableKind::MethodDef) as usize;
 		let e = get_coded_index_size(CodedIndexKind::TypeDefOrRef, tables) as usize;
 		4 + s * 2 + e + f + m
 	}
@@ -294,7 +296,7 @@ impl<'l> MetadataTable<'l> for TypeDefTable<'l> {
 			bytes,
 			str_size: StringHeap::idx_size(tables),
 			fld_size: tables.table_idx_size(TableKind::Field),
-			mtd_size: tables.table_idx_size(TableKind::Method),
+			mtd_size: tables.table_idx_size(TableKind::MethodDef),
 			ext_size: get_coded_index_size(CodedIndexKind::TypeDefOrRef, tables),
 		})
 	}
@@ -371,8 +373,8 @@ pub mod type_attributes {
 	pub const NESTED_PRIVATE: TypeAttributes = 0x00000003;
 	pub const NESTED_FAMILY: TypeAttributes = 0x00000004;
 	pub const NESTED_ASSEMBLY: TypeAttributes = 0x00000005;
-	pub const NESTED_FAM_AND_ASSEM: TypeAttributes = 0x00000006;
-	pub const NESTED_FAM_OR_ASSEM: TypeAttributes = 0x00000007;
+	pub const NESTED_FAMILY_AND_ASSEMBLY: TypeAttributes = 0x00000006;
+	pub const NESTED_FAMILY_OR_ASSEMBLY: TypeAttributes = 0x00000007;
 
 	//Class layout attributes
 	pub const LAYOUT_MASK: TypeAttributes = 0x00000018;
@@ -408,6 +410,154 @@ pub mod type_attributes {
 	pub const RT_SPECIAL_NAME: TypeAttributes = 0x0000000800;
 	pub const HAS_SECURITY: TypeAttributes = 0x0000040000;
 	pub const IS_TYPE_FORWARDER: TypeAttributes = 0x0000200000;
+}
+
+// #######################
+// ### MethodDef Table ###
+// #######################
+
+pub struct MethodDefTable<'l> {
+	bytes: &'l [u8],
+	str_size: MetadataIndexSize,
+	blob_size: MetadataIndexSize,
+	param_size: MetadataIndexSize,
+}
+
+#[derive(Debug, Clone)]
+pub struct MethodDef {
+	rva: u32,
+	impl_flags: MethodImplFlags,
+	flags: MethodFlags,
+	name: MetadataIndex,
+	signature: MetadataIndex,
+	params: MetadataIndex,
+}
+
+pub struct MethodDefIterator<'l> {
+	reader: ByteStream<'l>,
+	str_size: MetadataIndexSize,
+	blob_size: MetadataIndexSize,
+	param_size: MetadataIndexSize,
+}
+
+impl <'l> MetadataTable<'l> for MethodDefTable<'l> {
+	fn cli_identifier() -> TableKind {
+		TableKind::MethodDef
+	}
+
+	fn row_size(tables: &TableHeap) -> usize {
+		let b = BlobHeap::idx_size(tables) as usize;
+		let s = StringHeap::idx_size(tables) as usize;
+		let p = tables.table_idx_size(TableKind::Param) as usize;
+		8 + s + b + p
+	}
+
+	fn new(bytes: &'l [u8], tables: &TableHeap) -> Result<Self, Error> {
+		Ok(Self {
+			bytes,
+			str_size: StringHeap::idx_size(tables),
+			blob_size: BlobHeap::idx_size(tables),
+			param_size: tables.table_idx_size(TableKind::Param),
+		})
+	}
+}
+
+impl MethodDefTable<'_> {
+	pub fn iter(&self) -> MethodDefIterator {
+		MethodDefIterator {
+			reader: ByteStream::new(self.bytes),
+			str_size: self.str_size,
+			blob_size: self.blob_size,
+			param_size: self.param_size,
+		}
+	}
+}
+
+impl MethodDef {
+	pub fn rva(&self) -> u32 {
+		self.rva
+	}
+	
+	pub fn impl_flags(&self) -> MethodImplFlags {
+		self.impl_flags
+	}
+	
+	pub fn flags(&self) -> MethodFlags {
+		self.flags
+	}
+	
+	pub fn name(&self) -> MetadataIndex {
+		self.name
+	}
+	
+	pub fn signature(&self) -> MetadataIndex {
+		self.signature
+	}
+	
+	pub fn params(&self) -> MetadataIndex {
+		self.params
+	}
+}
+
+impl Iterator for MethodDefIterator<'_> {
+	type Item = Result<MethodDef, Error>;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		fn parse(this: &mut MethodDefIterator) -> Result<MethodDef, Error> {
+			Ok(MethodDef {
+				rva: this.reader.read::<u32>()?,
+				impl_flags: this.reader.read::<MethodImplFlags>()?,
+				flags: this.reader.read::<MethodFlags>()?,
+				name: this.reader.read_index(this.str_size)?,
+				signature: this.reader.read_index(this.blob_size)?,
+				params: this.reader.read_index(this.param_size)?,
+			})
+		}
+
+		match self.reader.remaining() {
+			0 => None,
+			_ => Some(parse(self)),
+		}
+	}
+}
+
+pub mod method_impl_flags {
+	pub type MethodImplFlags = u16;
+	pub const CODE_TYPE_MASK: MethodImplFlags = 0x0003;
+	pub const IL: MethodImplFlags = 0x0000;
+	pub const NATIVE: MethodImplFlags = 0x0001;
+	pub const OPT_IL: MethodImplFlags = 0x0002;
+	pub const RUNTIME: MethodImplFlags = 0x0003;
+	pub const MANAGED_MASK: MethodImplFlags = 0x0004;
+	pub const UNMANAGED: MethodImplFlags = 0x0004;
+	pub const MANAGED: MethodImplFlags = 0x0000;
+}
+
+pub mod method_flags {
+	pub type MethodFlags = u16;
+	pub const MEMBER_ACCESS_MASK: MethodFlags = 0x0007;
+	pub const COMPILER_CONTROLLED: MethodFlags = 0x0000;
+	pub const PRIVATE: MethodFlags = 0x0001;
+	pub const FAMILY_AND_ASSEMBLY: MethodFlags = 0x0002;
+	pub const ASSEMBLY: MethodFlags = 0x0003;
+	pub const FAMILY: MethodFlags = 0x0004;
+	pub const FAMILY_OR_ASSEMBLY: MethodFlags = 0x0005;
+	pub const PUBLIC: MethodFlags = 0x0006;
+	pub const STATIC: MethodFlags = 0x0010;
+	pub const FINAL: MethodFlags = 0x0020;
+	pub const VIRTUAL: MethodFlags = 0x0040;
+	pub const HIDE_BY_SIGNATURE: MethodFlags = 0x0080;
+	pub const VTABLE_LAYOUT_MASK: MethodFlags = 0x0100;
+	pub const REUSE_SLOT: MethodFlags = 0x0000;
+	pub const NEW_SLOT: MethodFlags = 0x0100;
+	pub const STRICT: MethodFlags = 0x0200;
+	pub const ABSTRACT: MethodFlags = 0x0400;
+	pub const SPECIAL_NAME: MethodFlags = 0x0800;
+	pub const PINVOKE_IMPL: MethodFlags = 0x2000;
+	pub const UNMANAGED_EXPORT: MethodFlags = 0x0008;
+	pub const RT_SPECIAL_NAME: MethodFlags = 0x1000;
+	pub const HAS_SECURITY: MethodFlags = 0x4000;
+	pub const REQUIRE_SECURITY_OBJECT: MethodFlags = 0x8000;
 }
 
 // ######################
@@ -590,6 +740,24 @@ impl Iterator for FieldIterator<'_> {
 
 pub mod field_flags {
 	pub type FieldFlags = u16;
+	pub const FIELD_ACCESS_MASK: FieldFlags = 0x0007;
+	pub const COMPILER_CONTROLLED: FieldFlags = 0x0000;
+	pub const PRIVATE: FieldFlags = 0x0001;
+	pub const FAMILY_AND_ASSEMBLY: FieldFlags = 0x0002;
+	pub const ASSEMBLY: FieldFlags = 0x0003;
+	pub const FAMILY: FieldFlags = 0x0004;
+	pub const FAMILY_OR_ASSEMBLY: FieldFlags = 0x0005;
+	pub const PUBLIC: FieldFlags = 0x0006;
+	pub const STATIC: FieldFlags = 0x0010;
+	pub const INIT_ONLY: FieldFlags = 0x0020;
+	pub const LITERAL: FieldFlags = 0x0040;
+	pub const NOT_SERIALIZED: FieldFlags = 0x0080;
+	pub const SPECIAL_NAME: FieldFlags = 0x0200;
+	pub const PINVOKE_IMPL: FieldFlags = 0x2000;
+	pub const RT_SPECIAL_NAME: FieldFlags = 0x0400;
+	pub const HAS_FIELD_MARSHAL: FieldFlags = 0x1000;
+	pub const HAS_DEFAULT: FieldFlags = 0x8000;
+	pub const HAS_FIELD_RVA: FieldFlags = 0x0100;	
 }
 
 pub(crate) mod private {
@@ -602,5 +770,9 @@ pub(crate) mod private {
 		fn cli_identifier() -> TableKind;
 		fn row_size(tables: &TableHeap) -> usize;
 		fn new(bytes: &'l [u8], tables: &TableHeap) -> Result<Self, Error>;
+
+		fn kind(&self) -> TableKind {
+			Self::cli_identifier()
+		}
 	}
 }

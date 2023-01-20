@@ -1,12 +1,15 @@
 [package]
 name = "clir"
-version = "0.1.0"
-edition = "2021"
 license = "MIT"
+edition = "2021"
+version = "0.1.0"
+readme = "README.md"
 categories = ["parsing"]
 keywords = ["parser", "parsing"]
 repository = "https://github.com/MaximumOverflow/CLIR"
 description = "An experimental CLI assembly parser written in Rust."
+
+exclude = [".gitignore", "rustfmt.toml"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
