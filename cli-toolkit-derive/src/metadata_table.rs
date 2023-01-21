@@ -29,7 +29,7 @@ pub fn derive(ast: DeriveInput) -> TokenStream {
 	let mut row_parsing = vec![];
 	let mut row_getters = vec![];
 
-	for field in fields.iter() {
+	for field in &fields {
 		let ty = &field.ty;
 		let ident = field.ident.as_ref().unwrap();
 
@@ -48,7 +48,10 @@ pub fn derive(ast: DeriveInput) -> TokenStream {
 					let field_ident = Ident::new(&field_name, Span::call_site());
 
 					table_fields.insert(field_name.clone(), quote!(#field_ident: MetadataIndexSize));
-					table_field_readings.insert(field_name.clone(), quote!(#field_ident: tables.idx_size(TableKind::#value_ident)));
+					table_field_readings.insert(
+						field_name.clone(),
+						quote!(#field_ident: tables.idx_size(TableKind::#value_ident)),
+					);
 
 					row_size.push(quote!(tables.idx_size(TableKind::#value_ident) as usize));
 					row_parsing.push(quote!(#ident: reader.read_index(self.#field_ident)?));
@@ -64,7 +67,10 @@ pub fn derive(ast: DeriveInput) -> TokenStream {
 					let field_ident = Ident::new(&field_name, Span::call_site());
 
 					table_fields.insert(field_name.clone(), quote!(#field_ident: MetadataIndexSize));
-					table_field_readings.insert(field_name.clone(), quote!(#field_ident: get_coded_index_size(CodedIndexKind::#value_ident, tables)));
+					table_field_readings.insert(
+						field_name.clone(),
+						quote!(#field_ident: get_coded_index_size(CodedIndexKind::#value_ident, tables)),
+					);
 
 					row_size.push(quote!(get_coded_index_size(CodedIndexKind::#value_ident, tables) as usize));
 					row_parsing.push(quote!(#ident: reader.read_index(self.#field_ident)?));
@@ -76,7 +82,8 @@ pub fn derive(ast: DeriveInput) -> TokenStream {
 					match value.as_str() {
 						"(String)" => {
 							table_fields.insert("str_size".to_string(), quote!(str_size: MetadataIndexSize));
-							table_field_readings.insert("str_size".to_string(), quote!(str_size: StringHeap::idx_size(tables)));
+							table_field_readings
+								.insert("str_size".to_string(), quote!(str_size: StringHeap::idx_size(tables)));
 
 							row_size.push(quote!(StringHeap::idx_size(tables) as usize));
 							row_parsing.push(quote!(#ident: reader.read_index(self.str_size)?));
@@ -84,7 +91,8 @@ pub fn derive(ast: DeriveInput) -> TokenStream {
 
 						"(Blob)" => {
 							table_fields.insert("blob_size".to_string(), quote!(blob_size: MetadataIndexSize));
-							table_field_readings.insert("blob_size".to_string(), quote!(blob_size: BlobHeap::idx_size(tables)));
+							table_field_readings
+								.insert("blob_size".to_string(), quote!(blob_size: BlobHeap::idx_size(tables)));
 
 							row_size.push(quote!(BlobHeap::idx_size(tables) as usize));
 							row_parsing.push(quote!(#ident: reader.read_index(self.blob_size)?));
@@ -92,7 +100,8 @@ pub fn derive(ast: DeriveInput) -> TokenStream {
 
 						"(Guid)" => {
 							table_fields.insert("guid_size".to_string(), quote!(guid_size: MetadataIndexSize));
-							table_field_readings.insert("guid_size".to_string(), quote!(guid_size: GuidHeap::idx_size(tables)));
+							table_field_readings
+								.insert("guid_size".to_string(), quote!(guid_size: GuidHeap::idx_size(tables)));
 
 							row_size.push(quote!(GuidHeap::idx_size(tables) as usize));
 							row_parsing.push(quote!(#ident: reader.read_index(self.guid_size)?));
@@ -111,7 +120,7 @@ pub fn derive(ast: DeriveInput) -> TokenStream {
 			row_parsing.push(quote!(#ident: reader.read()?));
 		}
 
-		row_getters.push(quote!{
+		row_getters.push(quote! {
 			pub fn #ident(&self) -> #ty {
 				self.#ident
 			}

@@ -303,7 +303,6 @@ pub struct CustomAttribute {
 	value: MetadataIndex,
 }
 
-
 #[derive(MetadataTable)]
 pub struct Constant {
 	type_: ElementType,

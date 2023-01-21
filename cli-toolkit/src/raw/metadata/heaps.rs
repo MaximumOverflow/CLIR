@@ -25,11 +25,11 @@ impl<'l> MetadataHeap<'l> for StringHeap<'l> {
 	}
 }
 
-impl StringHeap<'_> {
-	pub fn get_string(&self, index: MetadataIndex) -> &str {
+impl<'l> StringHeap<'l> {
+	pub fn get_string(&self, index: MetadataIndex) -> &'l str {
 		let bytes = &self.bytes[index.0..];
 		let bytes = &bytes[..bytes.iter().position(|c| *c == 0).unwrap_or(bytes.len())];
-		std::str::from_utf8(bytes).unwrap()
+		unsafe { std::str::from_utf8_unchecked(bytes) }
 	}
 }
 

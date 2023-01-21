@@ -1,4 +1,3 @@
-use crate::__impl_clone_from_byte_stream;
 use crate::raw::*;
 
 pub struct Assembly<'l> {
@@ -19,7 +18,8 @@ impl<'l> TryFrom<&'l [u8]> for Assembly<'l> {
 	fn try_from(bytes: &'l [u8]) -> Result<Self, Self::Error> {
 		let mut reader = ByteStream::new(bytes);
 		reader.seek(0x3C)?;
-		let pe_start = (reader.read::<u32>()? + 4) as usize;
+
+		let pe_start = reader.read::<u32>()? as usize;
 		reader.seek(pe_start)?;
 
 		let pe_header = PeHeader::from_byte_stream(&mut reader)?;
@@ -52,23 +52,6 @@ impl<'l> Assembly<'l> {
 	}
 }
 
-#[repr(C)]
-#[derive(Debug, Clone)]
-pub struct CliHeader {
-	pub size: u32,
-	pub major_runtime_version: u16,
-	pub minor_runtime_version: u16,
-	pub metadata: DataDirectory,
-	pub flags: u32,
-	pub entry_point_token: u32,
-	pub resources: DataDirectory,
-	pub strong_name_signature_rva: u64,
-	pub code_manager_table: u64,
-	pub v_table_fixups_rva: u64,
-	pub export_address_table_jumps: u64,
-	pub managed_native_header: u64,
-}
-
 fn resolve_rva(rva: u32, sections: &[SectionHeader]) -> Result<usize, Error> {
 	let section = sections
 		.iter()
@@ -77,5 +60,3 @@ fn resolve_rva(rva: u32, sections: &[SectionHeader]) -> Result<usize, Error> {
 
 	Ok((rva - section.virtual_address + section.pointer_to_raw_data) as usize)
 }
-
-__impl_clone_from_byte_stream!(CliHeader);

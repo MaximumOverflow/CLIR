@@ -1,4 +1,5 @@
 #[cfg(feature = "read")]
 pub mod raw;
 
-pub mod schema;
+#[cfg(feature = "read")]
+pub mod read;
