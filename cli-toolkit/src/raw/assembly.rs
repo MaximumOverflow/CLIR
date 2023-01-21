@@ -17,9 +17,9 @@ impl<'l> TryFrom<&'l [u8]> for Assembly<'l> {
 
 	fn try_from(bytes: &'l [u8]) -> Result<Self, Self::Error> {
 		let mut reader = ByteStream::new(bytes);
-		reader.seek(0x3C)?;
+		let dos_header = DosHeader::from_byte_stream(&mut reader)?;
 
-		let pe_start = reader.read::<u32>()? as usize;
+		let pe_start = dos_header.lfanew() as usize;
 		reader.seek(pe_start)?;
 
 		let pe_header = PeHeader::from_byte_stream(&mut reader)?;

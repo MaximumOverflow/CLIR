@@ -1,4 +1,5 @@
 pub use method_semantics_flags::MethodSemanticsFlags;
+pub use pinvoke_attributes::PInvokeAttributes;
 pub use method_impl_flags::MethodImplFlags;
 pub use type_attributes::TypeAttributes;
 pub use property_flags::PropertyFlags;
@@ -7,6 +8,7 @@ pub use assembly_flags::AssemblyFlags;
 pub use method_flags::MethodFlags;
 pub use field_flags::FieldFlags;
 pub use param_flags::ParamFlags;
+pub use event_flags::EventFlags;
 use private::ParseRow;
 use strum::EnumIter;
 use crate::raw::*;
@@ -410,6 +412,91 @@ pub mod method_semantics_flags {
 pub struct TypeSpec {
 	#[heap_index(Blob)]
 	signature: MetadataIndex,
+}
+
+#[derive(MetadataTable)]
+pub struct FieldMarshal {
+	#[coded_index(HasFieldMarshal)]
+	parent: MetadataIndex,
+	#[heap_index(Blob)]
+	native_type: MetadataIndex,
+}
+
+#[derive(MetadataTable)]
+pub struct MethodImpl {
+	#[table_index(TypeDef)]
+	class: MetadataIndex,
+	#[coded_index(MethodDefOrRef)]
+	body: MetadataIndex,
+	#[coded_index(MethodDefOrRef)]
+	declaration: MetadataIndex,
+}
+
+#[derive(MetadataTable)]
+pub struct ModuleRef {
+	#[heap_index(String)]
+	name: MetadataIndex,
+}
+
+#[derive(MetadataTable)]
+pub struct ImplMap {
+	mapping_flags: PInvokeAttributes,
+	#[coded_index(MemberForwarded)]
+	member_forwarded: MetadataIndex,
+	#[heap_index(String)]
+	import_name: MetadataIndex,
+	#[table_index(ModuleRef)]
+	import_scope: MetadataIndex,
+}
+
+pub mod pinvoke_attributes {
+	pub type PInvokeAttributes = u16;
+	//TODO Add flags II.23.1.8
+}
+
+#[derive(MetadataTable)]
+pub struct DeclSecurity {
+	action: u16,
+	#[coded_index(HasDeclSecurity)]
+	parent: MetadataIndex,
+	#[heap_index(Blob)]
+	permission_set: MetadataIndex,
+}
+
+#[derive(MetadataTable)]
+pub struct FieldRVA {
+	rva: u32,
+	#[table_index(Field)]
+	field: MetadataIndex,
+}
+
+#[derive(MetadataTable)]
+pub struct FieldLayout {
+	offset: u32,
+	#[table_index(Field)]
+	field: MetadataIndex,
+}
+
+#[derive(MetadataTable)]
+pub struct EventMap {
+	#[table_index(TypeDef)]
+	parent: MetadataIndex,
+	#[table_index(Event)]
+	event_list: MetadataIndex,
+}
+
+#[derive(MetadataTable)]
+pub struct Event {
+	flags: EventFlags,
+	#[heap_index(String)]
+	name: MetadataIndex,
+	#[coded_index(TypeDefOrRef)]
+	type_: MetadataIndex,
+}
+
+pub mod event_flags {
+	pub type EventFlags = u16;
+	//TODO Add flags §II.23.1.4
 }
 
 //<editor-fold desc="Assembly">

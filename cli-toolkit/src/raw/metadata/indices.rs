@@ -10,6 +10,7 @@ pub enum MetadataIndexSize {
 	Fat = 0x4,
 }
 
+#[derive(Debug)]
 pub enum CodedIndexKind {
 	TypeDefOrRef,
 	HasConstant,
