@@ -1,5 +1,5 @@
 .idea/
-target/
+*/target/
 
-Cargo.lock
-src/main.rs
+*/Cargo.lock
+cli-toolkit/src/main.rs

@@ -259,7 +259,7 @@ impl<'l> TableHeap<'l> {
 		}
 	}
 
-	pub(crate) fn table_idx_size(&self, table: TableKind) -> MetadataIndexSize {
+	pub(crate) fn idx_size(&self, table: TableKind) -> MetadataIndexSize {
 		match self.row_count(table) <= u16::MAX as usize {
 			true => MetadataIndexSize::Slim,
 			false => MetadataIndexSize::Fat,

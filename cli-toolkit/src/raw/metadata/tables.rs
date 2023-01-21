@@ -1,14 +1,13 @@
 pub use method_impl_flags::MethodImplFlags;
 pub use type_attributes::TypeAttributes;
+use cli_toolkit_derive::MetadataTable;
 pub use assembly_flags::AssemblyFlags;
 pub use method_flags::MethodFlags;
-use crate::__impl_multi_row_table;
 pub use field_flags::FieldFlags;
 pub use param_flags::ParamFlags;
 use private::ParseRow;
 use strum::EnumIter;
 use crate::raw::*;
-use paste::paste;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, EnumIter)]
 pub enum TableKind {
@@ -85,76 +84,42 @@ where
 	}
 }
 
-__impl_multi_row_table! {
-	Module
-
-	Row(self, reader) {
-		generation: u16 = reader.read()?,
-		name: MetadataIndex = reader.read_index(self.str_size)?,
-		module_version_id: MetadataIndex = reader.read_index(self.guid_size)?,
-		enc_id: MetadataIndex = reader.read_index(self.guid_size)?,
-		enc_base_id: MetadataIndex = reader.read_index(self.guid_size)?
-	}
-
-	Table(tables) {
-		row_size = {
-			let g = GuidHeap::idx_size(tables) as usize;
-			let s = StringHeap::idx_size(tables) as usize;
-			2 + s + g * 3
-		}
-
-		str_size: MetadataIndexSize = StringHeap::idx_size(tables),
-		guid_size: MetadataIndexSize = GuidHeap::idx_size(tables)
-	}
+#[derive(MetadataTable)]
+pub struct Module {
+	generation: u16,
+	#[heap_index(String)]
+	name: MetadataIndex,
+	#[heap_index(Guid)]
+	module_version_id: MetadataIndex,
+	#[heap_index(Guid)]
+	enc_id: MetadataIndex,
+	#[heap_index(Guid)]
+	enc_base_id: MetadataIndex,
 }
 
-__impl_multi_row_table! {
-	TypeRef
-
-	Row(self, reader) {
-		resolution_scope: MetadataIndex = reader.read_index(self.res_size)?,
-		type_name: MetadataIndex = reader.read_index(self.str_size)?,
-		type_namespace: MetadataIndex = reader.read_index(self.str_size)?
-	}
-
-	Table(tables) {
-		row_size = {
-			let s = StringHeap::idx_size(tables) as usize;
-			let r = get_coded_index_size(CodedIndexKind::TypeOrMethodDef, tables) as usize;
-			r + s * 2
-		}
-
-		res_size: MetadataIndexSize = StringHeap::idx_size(tables),
-		str_size: MetadataIndexSize = get_coded_index_size(CodedIndexKind::TypeOrMethodDef, tables)
-	}
+#[derive(MetadataTable)]
+pub struct TypeRef {
+	#[coded_index(TypeOrMethodDef)]
+	resolution_scope: MetadataIndex,
+	#[heap_index(String)]
+	type_name: MetadataIndex,
+	#[heap_index(String)]
+	type_namespace: MetadataIndex,
 }
 
-__impl_multi_row_table! {
-	TypeDef
-
-	Row(self, reader) {
-		flags: TypeAttributes = reader.read()?,
-		name: MetadataIndex = reader.read_index(self.str_size)?,
-		namespace: MetadataIndex = reader.read_index(self.str_size)?,
-		extends: MetadataIndex = reader.read_index(self.ext_size)?,
-		fields: MetadataIndex = reader.read_index(self.fld_size)?,
-		methods: MetadataIndex = reader.read_index(self.mtd_size)?
-	}
-
-	Table(tables) {
-		row_size = {
-			let s = StringHeap::idx_size(tables) as usize;
-			let f = tables.table_idx_size(TableKind::Field) as usize;
-			let m = tables.table_idx_size(TableKind::MethodDef) as usize;
-			let e = get_coded_index_size(CodedIndexKind::TypeDefOrRef, tables) as usize;
-			4 + s * 2 + e + f + m
-		}
-
-		str_size: MetadataIndexSize = StringHeap::idx_size(tables),
-		fld_size: MetadataIndexSize = tables.table_idx_size(TableKind::Field),
-		mtd_size: MetadataIndexSize = tables.table_idx_size(TableKind::MethodDef),
-		ext_size: MetadataIndexSize = get_coded_index_size(CodedIndexKind::TypeDefOrRef, tables)
-	}
+#[derive(MetadataTable)]
+pub struct TypeDef {
+	flags: TypeAttributes,
+	#[heap_index(String)]
+	name: MetadataIndex,
+	#[heap_index(String)]
+	namespace: MetadataIndex,
+	#[coded_index(TypeDefOrRef)]
+	extends: MetadataIndex,
+	#[table_index(Field)]
+	fields: MetadataIndex,
+	#[table_index(MethodDef)]
+	methods: MetadataIndex,
 }
 
 pub mod type_attributes {
@@ -207,25 +172,13 @@ pub mod type_attributes {
 	pub const IS_TYPE_FORWARDER: TypeAttributes = 0x0000200000;
 }
 
-__impl_multi_row_table! {
-	Field
-
-	Row(self, reader) {
-		flags: FieldFlags = reader.read()?,
-		name: MetadataIndex = reader.read_index(self.str_size)?,
-		signature: MetadataIndex = reader.read_index(self.blob_size)?
-	}
-
-	Table(tables) {
-		row_size = {
-			let b = BlobHeap::idx_size(tables) as usize;
-			let s = StringHeap::idx_size(tables) as usize;
-			2 + s + b
-		}
-
-		blob_size: MetadataIndexSize = BlobHeap::idx_size(tables),
-		str_size: MetadataIndexSize = StringHeap::idx_size(tables)
-	}
+#[derive(MetadataTable)]
+pub struct Field {
+	flags: FieldFlags,
+	#[heap_index(String)]
+	name: MetadataIndex,
+	#[heap_index(Blob)]
+	signature: MetadataIndex,
 }
 
 pub mod field_flags {
@@ -250,30 +203,17 @@ pub mod field_flags {
 	pub const HAS_FIELD_RVA: FieldFlags = 0x0100;
 }
 
-__impl_multi_row_table! {
-	MethodDef
-
-	Row(self, reader) {
-		rva: u32 = reader.read()?,
-		impl_flags: MethodImplFlags = reader.read()?,
-		flags: MethodFlags = reader.read()?,
-		name: MetadataIndex = reader.read_index(self.str_size)?,
-		signature: MetadataIndex = reader.read_index(self.blob_size)?,
-		params: MetadataIndex = reader.read_index(self.param_size)?
-	}
-
-	Table(tables) {
-		row_size = {
-			let b = BlobHeap::idx_size(tables) as usize;
-			let s = StringHeap::idx_size(tables) as usize;
-			let p = tables.table_idx_size(TableKind::Param) as usize;
-			8 + s + b + p
-		}
-
-		str_size: MetadataIndexSize = StringHeap::idx_size(tables),
-		blob_size: MetadataIndexSize = BlobHeap::idx_size(tables),
-		param_size: MetadataIndexSize = tables.table_idx_size(TableKind::Param)
-	}
+#[derive(MetadataTable)]
+pub struct MethodDef {
+	rva: u32,
+	impl_flags: MethodImplFlags,
+	flags: MethodFlags,
+	#[heap_index(String)]
+	name: MetadataIndex,
+	#[heap_index(Blob)]
+	signature: MetadataIndex,
+	#[table_index(Param)]
+	params: MetadataIndex,
 }
 
 pub mod method_impl_flags {
@@ -315,22 +255,12 @@ pub mod method_flags {
 	pub const REQUIRE_SECURITY_OBJECT: MethodFlags = 0x8000;
 }
 
-__impl_multi_row_table! {
-	Param
-
-	Row(self, reader) {
-		flags: ParamFlags = reader.read()?,
-		sequence: u16 = reader.read()?,
-		name: MetadataIndex = reader.read_index(self.str_size)?
-	}
-
-	Table(tables) {
-		row_size = {
-			StringHeap::idx_size(tables) as usize + 4
-		}
-
-		str_size: MetadataIndexSize = StringHeap::idx_size(tables)
-	}
+#[derive(MetadataTable)]
+pub struct Param {
+	flags: ParamFlags,
+	sequence: u16,
+	#[heap_index(String)]
+	name: MetadataIndex,
 }
 
 pub mod param_flags {
@@ -343,70 +273,32 @@ pub mod param_flags {
 	pub const UNUSED: ParamFlags = 0xcfe0;
 }
 
-__impl_multi_row_table! {
-	InterfaceImpl
-
-	Row(self, reader) {
-		type_: MetadataIndex = reader.read_index(self.type_size)?,
-		interface: MetadataIndex = reader.read_index(self.interface_size)?
-	}
-
-	Table(tables) {
-		row_size = {
-			let t = tables.table_idx_size(TableKind::TypeRef) as usize;
-			let i = get_coded_index_size(CodedIndexKind::TypeDefOrRef, tables) as usize;
-			t + i
-		}
-
-		type_size: MetadataIndexSize = tables.table_idx_size(TableKind::TypeRef),
-		interface_size: MetadataIndexSize = get_coded_index_size(CodedIndexKind::TypeDefOrRef, tables)
-	}
+#[derive(MetadataTable)]
+pub struct InterfaceImpl {
+	#[table_index(TypeRef)]
+	type_: MetadataIndex,
+	#[coded_index(TypeDefOrRef)]
+	interface: MetadataIndex,
 }
 
-__impl_multi_row_table! {
-	MemberRef
-
-	Row(self, reader) {
-		parent: MetadataIndex = reader.read_index(self.parent_size)?,
-		name: MetadataIndex = reader.read_index(self.str_size)?,
-		signature: MetadataIndex = reader.read_index(self.blob_size)?
-	}
-
-	Table(tables) {
-		row_size = {
-			let b = BlobHeap::idx_size(tables) as usize;
-			let s = StringHeap::idx_size(tables) as usize;
-			let p = get_coded_index_size(CodedIndexKind::MemberRefParent, tables) as usize;
-			p + s + b
-		}
-
-		str_size: MetadataIndexSize = BlobHeap::idx_size(tables),
-		blob_size: MetadataIndexSize = StringHeap::idx_size(tables),
-		parent_size: MetadataIndexSize = get_coded_index_size(CodedIndexKind::MemberRefParent, tables)
-	}
+#[derive(MetadataTable)]
+pub struct MemberRef {
+	#[coded_index(MemberRefParent)]
+	parent: MetadataIndex,
+	#[heap_index(String)]
+	name: MetadataIndex,
+	#[heap_index(Blob)]
+	signature: MetadataIndex,
 }
 
-__impl_multi_row_table! {
-	CustomAttribute
-
-	Row(self, reader) {
-		parent: MetadataIndex = reader.read_index(self.parent_size)?,
-		type_: MetadataIndex = reader.read_index(self.type_size)?,
-		value: MetadataIndex = reader.read_index(self.blob_size)?
-	}
-
-	Table(tables) {
-		row_size = {
-			let b = BlobHeap::idx_size(tables) as usize;
-			let p = get_coded_index_size(CodedIndexKind::HasCustomAttribute, tables) as usize;
-			let t = get_coded_index_size(CodedIndexKind::CustomAttributeType, tables) as usize;
-			p + t + b
-		}
-
-		blob_size: MetadataIndexSize = BlobHeap::idx_size(tables),
-		type_size: MetadataIndexSize = get_coded_index_size(CodedIndexKind::CustomAttributeType, tables),
-		parent_size: MetadataIndexSize = get_coded_index_size(CodedIndexKind::HasCustomAttribute, tables)
-	}
+#[derive(MetadataTable)]
+pub struct CustomAttribute {
+	#[coded_index(HasCustomAttribute)]
+	parent: MetadataIndex,
+	#[coded_index(CustomAttributeType)]
+	type_: MetadataIndex,
+	#[heap_index(Blob)]
+	value: MetadataIndex,
 }
 
 //<editor-fold desc="Constant">
@@ -431,7 +323,7 @@ pub struct ConstantIterator<'l> {
 	table: ConstantTable<'l>,
 }
 
-impl <'l> MetadataTable<'l> for ConstantTable<'l> {
+impl<'l> MetadataTable<'l> for ConstantTable<'l> {
 	type Iter = ConstantIterator<'l>;
 
 	fn bytes(&self) -> &'l [u8] {
@@ -464,7 +356,7 @@ impl ParseRow for ConstantTable<'_> {
 	}
 }
 
-impl <'l> MetadataTableImpl<'l> for ConstantTable<'l> {
+impl<'l> MetadataTableImpl<'l> for ConstantTable<'l> {
 	fn cli_identifier() -> TableKind {
 		TableKind::Constant
 	}
@@ -491,7 +383,7 @@ impl Iterator for ConstantIterator<'_> {
 	fn next(&mut self) -> Option<Self::Item> {
 		match self.reader.remaining() {
 			0 => None,
-			_ => Some(self.table.parse_row(&mut self.reader))
+			_ => Some(self.table.parse_row(&mut self.reader)),
 		}
 	}
 }
