@@ -1,5 +1,7 @@
+pub use method_semantics_flags::MethodSemanticsFlags;
 pub use method_impl_flags::MethodImplFlags;
 pub use type_attributes::TypeAttributes;
+pub use property_flags::PropertyFlags;
 use cli_toolkit_derive::MetadataTable;
 pub use assembly_flags::AssemblyFlags;
 pub use method_flags::MethodFlags;
@@ -301,105 +303,15 @@ pub struct CustomAttribute {
 	value: MetadataIndex,
 }
 
-//<editor-fold desc="Constant">
-#[derive(Debug, Clone)]
+
+#[derive(MetadataTable)]
 pub struct Constant {
 	type_: ElementType,
+	__padding: u8,
+	#[coded_index(HasConstant)]
 	parent: MetadataIndex,
+	#[heap_index(Blob)]
 	value: MetadataIndex,
-}
-
-#[derive(Clone)]
-pub struct ConstantTable<'l> {
-	bytes: &'l [u8],
-	row_size: usize,
-	blob_size: MetadataIndexSize,
-	parent_size: MetadataIndexSize,
-}
-
-#[derive(Clone)]
-pub struct ConstantIterator<'l> {
-	reader: ByteStream<'l>,
-	table: ConstantTable<'l>,
-}
-
-impl<'l> MetadataTable<'l> for ConstantTable<'l> {
-	type Iter = ConstantIterator<'l>;
-
-	fn bytes(&self) -> &'l [u8] {
-		self.bytes
-	}
-
-	fn row_size(&self) -> usize {
-		self.row_size
-	}
-
-	fn iter(&self) -> Self::Iter {
-		ConstantIterator {
-			table: self.clone(),
-			reader: ByteStream::new(self.bytes),
-		}
-	}
-}
-
-impl ParseRow for ConstantTable<'_> {
-	type Row = Constant;
-
-	fn parse_row(&self, reader: &mut ByteStream) -> Result<Self::Row, Error> {
-		let type_ = reader.read()?;
-		reader.skip(1)?;
-		Ok(Self::Row {
-			type_,
-			parent: reader.read_index(self.parent_size)?,
-			value: reader.read_index(self.blob_size)?,
-		})
-	}
-}
-
-impl<'l> MetadataTableImpl<'l> for ConstantTable<'l> {
-	fn cli_identifier() -> TableKind {
-		TableKind::Constant
-	}
-
-	fn calc_row_size(tables: &TableHeap) -> usize {
-		let b = BlobHeap::idx_size(tables) as usize;
-		let p = get_coded_index_size(CodedIndexKind::HasConstant, tables) as usize;
-		2 + p + b
-	}
-
-	fn new(bytes: &'l [u8], tables: &TableHeap) -> Result<Self, Error> {
-		Ok(Self {
-			bytes,
-			row_size: Self::calc_row_size(tables),
-			blob_size: BlobHeap::idx_size(tables),
-			parent_size: get_coded_index_size(CodedIndexKind::HasConstant, tables),
-		})
-	}
-}
-
-impl Iterator for ConstantIterator<'_> {
-	type Item = Result<Constant, Error>;
-
-	fn next(&mut self) -> Option<Self::Item> {
-		match self.reader.remaining() {
-			0 => None,
-			_ => Some(self.table.parse_row(&mut self.reader)),
-		}
-	}
-}
-
-impl Constant {
-	pub fn type_(&self) -> ElementType {
-		self.type_
-	}
-
-	pub fn parent(&self) -> MetadataIndex {
-		self.parent
-	}
-
-	pub fn value(&self) -> MetadataIndex {
-		self.value
-	}
 }
 
 #[repr(u8)]
@@ -442,7 +354,64 @@ pub enum ElementType {
 	Pinned = 0x45,
 	Type = 0x50,
 }
-//</editor-fold>
+
+#[derive(MetadataTable)]
+pub struct ClassLayout {
+	packing_size: u16,
+	class_size: u32,
+	#[table_index(TypeDef)]
+	parent: MetadataIndex,
+}
+
+#[derive(MetadataTable)]
+pub struct PropertyMap {
+	#[table_index(TypeDef)]
+	parent: MetadataIndex,
+	#[table_index(Property)]
+	property_list: MetadataIndex,
+}
+
+#[derive(MetadataTable)]
+pub struct Property {
+	flags: PropertyFlags,
+	#[heap_index(String)]
+	name: MetadataIndex,
+	#[heap_index(Blob)]
+	signature: MetadataIndex,
+}
+
+pub mod property_flags {
+	pub type PropertyFlags = u16;
+	pub const SPECIAL_NAME: PropertyFlags = 0x0200;
+	pub const RT_SPECIAL_NAME: PropertyFlags = 0x0400;
+	pub const HAS_DEFAULT: PropertyFlags = 0x1000;
+	pub const UNUSED: PropertyFlags = 0xE9FF;
+}
+
+#[derive(MetadataTable)]
+pub struct MethodSemantics {
+	semantics: MethodSemanticsFlags,
+	#[table_index(MethodDef)]
+	method: MetadataIndex,
+	#[coded_index(HasSemantics)]
+	association: MetadataIndex,
+}
+
+pub mod method_semantics_flags {
+	pub type MethodSemanticsFlags = u16;
+	pub const SETTER: MethodSemanticsFlags = 0x0001;
+	pub const GETTER: MethodSemanticsFlags = 0x0002;
+	pub const OTHER: MethodSemanticsFlags = 0x0004;
+	pub const ADD_ON: MethodSemanticsFlags = 0x0008;
+	pub const REMOVE_ON: MethodSemanticsFlags = 0x0010;
+	pub const FIRE: MethodSemanticsFlags = 0x0020;
+}
+
+#[derive(MetadataTable)]
+pub struct TypeSpec {
+	#[heap_index(Blob)]
+	signature: MetadataIndex,
+}
 
 //<editor-fold desc="Assembly">
 #[derive(Clone)]
