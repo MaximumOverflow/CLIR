@@ -104,7 +104,7 @@ impl<'l> BlobHeap<'l> {
 				let byte_2 = reader.read::<u8>()?;
 				(((byte_0 & 0x3F) as usize) << 16) + ((byte_1 as usize) << 8) + byte_2 as usize
 			} else {
-				return Err(Error::InvalidData);
+				return Err(Error::InvalidData(reader.position() - 1, None));
 			}
 		};
 
@@ -263,6 +263,7 @@ impl<'l> TableHeap<'l> {
 			TableKind::FieldLayout => FieldLayoutTable::calc_row_size(self),
 			TableKind::ClassLayout => ClassLayoutTable::calc_row_size(self),
 			TableKind::PropertyMap => PropertyMapTable::calc_row_size(self),
+			TableKind::AssemblyRef => AssemblyRefTable::calc_row_size(self),
 			TableKind::FieldMarshal => FieldMarshalTable::calc_row_size(self),
 			TableKind::DeclSecurity => DeclSecurityTable::calc_row_size(self),
 			TableKind::InterfaceImpl => InterfaceImplTable::calc_row_size(self),

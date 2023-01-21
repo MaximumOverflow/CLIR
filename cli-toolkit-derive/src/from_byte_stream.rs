@@ -33,7 +33,7 @@ pub fn derive(ast: DeriveInput) -> TokenStream {
 
 					checks.push(quote! {
 						if !(#check)(&#ident) {
-							return Err(crate::raw::Error::InvalidData);
+							return Err(crate::raw::Error::InvalidData(0, None));
 						}
 					});
 					None
@@ -44,7 +44,10 @@ pub fn derive(ast: DeriveInput) -> TokenStream {
 
 		match expected_value {
 			None => reads.push(quote!(let #ident = stream.read()?;)),
-			Some(value) => reads.push(quote!(let #ident = stream.read_checked(#value)?;)),
+			Some(value) => {
+				let err = format!("Invalid value for {}::{}", name, ident);
+				reads.push(quote!(let #ident = stream.read_checked(#value, Some(#err))?;))
+			},
 		}
 	}
 

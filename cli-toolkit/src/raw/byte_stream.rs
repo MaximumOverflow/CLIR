@@ -3,14 +3,14 @@ pub(crate) use cli_toolkit_derive::FromByteStream;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum Error {
-	InvalidData,
 	UnalignedRead,
 	OffsetOutOfBounds,
 	UnexpectedEndOfStream,
+	InvalidData(usize, Option<&'static str>),
 }
 
 mod private {
-	use std::mem::{align_of, size_of};
+	use std::mem::{align_of, MaybeUninit, size_of};
 	use crate::raw::{Error, MetadataIndex, MetadataIndexSize};
 	use crate::raw::Error::*;
 
@@ -77,11 +77,15 @@ mod private {
 			}
 		}
 
-		pub fn read_checked<T: 'static + PartialEq>(&mut self, check: impl FnOnce(&T) -> bool) -> Result<T, Error> {
+		pub fn read_checked<T: 'static + PartialEq>(
+			&mut self,
+			check: impl FnOnce(&T) -> bool,
+			message: Option<&'static str>,
+		) -> Result<T, Error> {
 			let value = self.read::<T>()?;
 			match check(&value) {
 				true => Ok(value),
-				false => Err(InvalidData),
+				false => Err(InvalidData(self.position - size_of::<T>(), message)),
 			}
 		}
 
@@ -136,7 +140,7 @@ mod private {
 		pub fn read_null_terminated_str(&mut self) -> Result<&'l str, Error> {
 			let bytes = self.read_u8_slice_until(0)?;
 			let bytes = &bytes[..bytes.len() - 1];
-			std::str::from_utf8(bytes).or(Err(InvalidData))
+			std::str::from_utf8(bytes).or(Err(InvalidData(self.position - bytes.len() + 1, None)))
 		}
 
 		pub(crate) fn read_index(&mut self, size: MetadataIndexSize) -> Result<MetadataIndex, Error> {

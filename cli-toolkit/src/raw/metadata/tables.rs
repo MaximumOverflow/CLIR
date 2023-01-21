@@ -624,6 +624,23 @@ pub mod assembly_flags {
 }
 //</editor-fold>
 
+#[derive(MetadataTable)]
+pub struct AssemblyRef {
+	major_version: u16,
+	minor_version: u16,
+	build_number: u16,
+	revision_number: u16,
+	flags: AssemblyFlags,
+	#[heap_index(Blob)]
+	public_key: MetadataIndex,
+	#[heap_index(String)]
+	name: MetadataIndex,
+	#[heap_index(String)]
+	culture: MetadataIndex,
+	#[heap_index(Blob)]
+	hash_value: MetadataIndex,
+}
+
 #[derive(Clone)]
 pub struct StandAloneSignatureTable<'l> {
 	bytes: &'l [u8],

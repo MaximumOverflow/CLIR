@@ -9,4 +9,4 @@ pub use byte_stream::*;
 pub use portable_executable::*;
 
 pub use assembly::Assembly;
-pub use metadata::tables::Assembly as AssemblyRow;
+pub use metadata::tables::Assembly as AssemblyDef;
