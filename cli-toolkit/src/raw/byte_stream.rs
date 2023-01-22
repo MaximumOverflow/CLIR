@@ -10,9 +10,9 @@ pub enum Error {
 }
 
 mod private {
-	use std::mem::{align_of, MaybeUninit, size_of};
-	use crate::raw::{Error, MetadataIndex, MetadataIndexSize};
+	use std::mem::{align_of, size_of};
 	use crate::raw::Error::*;
+	use crate::raw::{CodedIndex, Error, IndexSize, TableIndex, HeapIndex};
 
 	#[derive(Debug, Clone)]
 	pub struct ByteStream<'l> {
@@ -143,13 +143,31 @@ mod private {
 			std::str::from_utf8(bytes).or(Err(InvalidData(self.position - bytes.len() + 1, None)))
 		}
 
-		pub(crate) fn read_index(&mut self, size: MetadataIndexSize) -> Result<MetadataIndex, Error> {
+		pub(crate) fn read_table_index(&mut self, size: IndexSize) -> Result<TableIndex, Error> {
 			let value = match size {
-				MetadataIndexSize::Slim => self.read::<u16>()? as usize,
-				MetadataIndexSize::Fat => self.read::<u32>()? as usize,
+				IndexSize::Fat => self.read::<u32>()?,
+				IndexSize::Slim => self.read::<u16>()? as u32,
 			};
 
-			Ok(MetadataIndex(value))
+			Ok(TableIndex(value))
+		}
+
+		pub(crate) fn read_heap_index(&mut self, size: IndexSize) -> Result<HeapIndex, Error> {
+			let value = match size {
+				IndexSize::Fat => self.read::<u32>()?,
+				IndexSize::Slim => self.read::<u16>()? as u32,
+			};
+
+			Ok(HeapIndex(value))
+		}
+
+		pub(crate) fn read_coded_index(&mut self, size: IndexSize) -> Result<CodedIndex, Error> {
+			let value = match size {
+				IndexSize::Fat => self.read::<u32>()?,
+				IndexSize::Slim => self.read::<u16>()? as u32,
+			};
+
+			Ok(CodedIndex(value))
 		}
 	}
 }

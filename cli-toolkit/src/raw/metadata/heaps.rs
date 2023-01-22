@@ -6,6 +6,7 @@ use crate::raw::*;
 use indoc::indoc;
 use uuid::Uuid;
 
+#[derive(Copy, Clone)]
 pub struct StringHeap<'l> {
 	bytes: &'l [u8],
 }
@@ -17,17 +18,17 @@ impl<'l> MetadataHeap<'l> for StringHeap<'l> {
 	fn cli_identifier() -> &'static str {
 		"#Strings"
 	}
-	fn idx_size(tables: &TableHeap) -> MetadataIndexSize {
+	fn idx_size(tables: &TableHeap) -> IndexSize {
 		match (tables.heap_sizes().data[0] & 0x1) != 0 {
-			true => MetadataIndexSize::Fat,
-			false => MetadataIndexSize::Slim,
+			true => IndexSize::Fat,
+			false => IndexSize::Slim,
 		}
 	}
 }
 
 impl<'l> StringHeap<'l> {
-	pub fn get_string(&self, index: MetadataIndex) -> &'l str {
-		let bytes = &self.bytes[index.0..];
+	pub fn get_string(&self, index: HeapIndex) -> &'l str {
+		let bytes = &self.bytes[index.0 as usize..];
 		let bytes = &bytes[..bytes.iter().position(|c| *c == 0).unwrap_or(bytes.len())];
 		unsafe { std::str::from_utf8_unchecked(bytes) }
 	}
@@ -39,6 +40,7 @@ impl Debug for StringHeap<'_> {
 	}
 }
 
+#[derive(Copy, Clone)]
 pub struct GuidHeap<'l> {
 	bytes: &'l [u8],
 }
@@ -50,10 +52,10 @@ impl<'l> MetadataHeap<'l> for GuidHeap<'l> {
 	fn cli_identifier() -> &'static str {
 		"#GUID"
 	}
-	fn idx_size(tables: &TableHeap) -> MetadataIndexSize {
+	fn idx_size(tables: &TableHeap) -> IndexSize {
 		match (tables.heap_sizes().data[0] & 0x2) != 0 {
-			true => MetadataIndexSize::Fat,
-			false => MetadataIndexSize::Slim,
+			true => IndexSize::Fat,
+			false => IndexSize::Slim,
 		}
 	}
 }
@@ -68,6 +70,7 @@ impl Debug for GuidHeap<'_> {
 	}
 }
 
+#[derive(Copy, Clone)]
 pub struct BlobHeap<'l> {
 	bytes: &'l [u8],
 }
@@ -79,18 +82,18 @@ impl<'l> MetadataHeap<'l> for BlobHeap<'l> {
 	fn cli_identifier() -> &'static str {
 		"#Blob"
 	}
-	fn idx_size(tables: &TableHeap) -> MetadataIndexSize {
+	fn idx_size(tables: &TableHeap) -> IndexSize {
 		match (tables.heap_sizes().data[0] & 0x4) != 0 {
-			true => MetadataIndexSize::Fat,
-			false => MetadataIndexSize::Slim,
+			true => IndexSize::Fat,
+			false => IndexSize::Slim,
 		}
 	}
 }
 
 impl<'l> BlobHeap<'l> {
-	pub fn get_blob(&self, index: MetadataIndex) -> Result<&'l [u8], Error> {
+	pub fn get_blob(&self, index: MetadataToken) -> Result<&'l [u8], Error> {
 		let mut reader = ByteStream::new(self.bytes);
-		reader.seek(index.0)?;
+		reader.seek(index.0 as usize)?;
 
 		let length = {
 			let byte_0 = reader.read::<u8>()?;
@@ -129,7 +132,7 @@ impl<'l> MetadataHeap<'l> for UserStringHeap<'l> {
 	fn cli_identifier() -> &'static str {
 		"#US"
 	}
-	fn idx_size(_: &TableHeap) -> MetadataIndexSize {
+	fn idx_size(_: &TableHeap) -> IndexSize {
 		unimplemented!()
 	}
 }
@@ -140,7 +143,7 @@ impl Debug for UserStringHeap<'_> {
 	}
 }
 
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub struct TableHeap<'l> {
 	bytes: &'l [u8],
 }
@@ -152,7 +155,7 @@ impl<'l> MetadataHeap<'l> for TableHeap<'l> {
 	fn cli_identifier() -> &'static str {
 		"#~"
 	}
-	fn idx_size(_: &TableHeap) -> MetadataIndexSize {
+	fn idx_size(_: &TableHeap) -> IndexSize {
 		unimplemented!()
 	}
 }
@@ -274,10 +277,10 @@ impl<'l> TableHeap<'l> {
 		}
 	}
 
-	pub(crate) fn idx_size(&self, table: TableKind) -> MetadataIndexSize {
+	pub(crate) fn idx_size(&self, table: TableKind) -> IndexSize {
 		match self.row_count(table) <= u16::MAX as usize {
-			true => MetadataIndexSize::Slim,
-			false => MetadataIndexSize::Fat,
+			true => IndexSize::Slim,
+			false => IndexSize::Fat,
 		}
 	}
 }
@@ -323,6 +326,6 @@ pub(crate) mod private {
 	pub trait MetadataHeap<'l> {
 		fn new(bytes: &'l [u8]) -> Self;
 		fn cli_identifier() -> &'static str;
-		fn idx_size(tables: &TableHeap) -> MetadataIndexSize;
+		fn idx_size(tables: &TableHeap) -> IndexSize;
 	}
 }

@@ -1,5 +1,4 @@
 use std::ffi::c_char;
-use strum::IntoEnumIterator;
 use crate::raw::{ByteStream, Error, FromByteStream};
 
 #[repr(C)]

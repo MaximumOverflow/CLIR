@@ -1,7 +1,7 @@
 pub use method_semantics_flags::MethodSemanticsFlags;
 pub use pinvoke_attributes::PInvokeAttributes;
 pub use method_impl_flags::MethodImplFlags;
-pub use type_attributes::TypeAttributes;
+pub use type_flags::TypeFlags;
 pub use property_flags::PropertyFlags;
 use cli_toolkit_derive::MetadataTable;
 pub use assembly_flags::AssemblyFlags;
@@ -81,9 +81,13 @@ where
 	fn row_size(&self) -> usize;
 	fn iter(&self) -> Self::Iter;
 
-	fn get(&self, index: MetadataIndex) -> Result<Self::Row, Error> {
+	fn len(&self) -> usize {
+		self.bytes().len() / self.row_size()
+	}
+
+	fn get(&self, index: TableIndex) -> Result<Self::Row, Error> {
 		let mut reader = ByteStream::new(self.bytes());
-		reader.seek(self.row_size() * index.0)?;
+		reader.seek(self.row_size() * ((index.0 - 1) as usize))?;
 		self.parse_row(&mut reader)
 	}
 }
@@ -92,97 +96,97 @@ where
 pub struct Module {
 	generation: u16,
 	#[heap_index(String)]
-	name: MetadataIndex,
+	name: HeapIndex,
 	#[heap_index(Guid)]
-	module_version_id: MetadataIndex,
+	module_version_id: HeapIndex,
 	#[heap_index(Guid)]
-	enc_id: MetadataIndex,
+	enc_id: HeapIndex,
 	#[heap_index(Guid)]
-	enc_base_id: MetadataIndex,
+	enc_base_id: HeapIndex,
 }
 
 #[derive(MetadataTable)]
 pub struct TypeRef {
 	#[coded_index(TypeOrMethodDef)]
-	resolution_scope: MetadataIndex,
+	resolution_scope: CodedIndex,
 	#[heap_index(String)]
-	type_name: MetadataIndex,
+	type_name: HeapIndex,
 	#[heap_index(String)]
-	type_namespace: MetadataIndex,
+	type_namespace: HeapIndex,
 }
 
 #[derive(MetadataTable)]
 pub struct TypeDef {
-	flags: TypeAttributes,
+	flags: TypeFlags,
 	#[heap_index(String)]
-	name: MetadataIndex,
+	name: HeapIndex,
 	#[heap_index(String)]
-	namespace: MetadataIndex,
+	namespace: HeapIndex,
 	#[coded_index(TypeDefOrRef)]
-	extends: MetadataIndex,
+	extends: CodedIndex,
 	#[table_index(Field)]
-	fields: MetadataIndex,
+	fields: TableIndex,
 	#[table_index(MethodDef)]
-	methods: MetadataIndex,
+	methods: TableIndex,
 }
 
-pub mod type_attributes {
-	pub type TypeAttributes = u32;
+pub mod type_flags {
+	pub type TypeFlags = u32;
 
 	//Visibility attributes
-	pub const VISIBILITY_MASK: TypeAttributes = 0x00000007;
-	pub const NOT_PUBLIC: TypeAttributes = 0x00000000;
-	pub const PUBLIC: TypeAttributes = 0x00000001;
-	pub const NESTED_PUBLIC: TypeAttributes = 0x00000002;
-	pub const NESTED_PRIVATE: TypeAttributes = 0x00000003;
-	pub const NESTED_FAMILY: TypeAttributes = 0x00000004;
-	pub const NESTED_ASSEMBLY: TypeAttributes = 0x00000005;
-	pub const NESTED_FAMILY_AND_ASSEMBLY: TypeAttributes = 0x00000006;
-	pub const NESTED_FAMILY_OR_ASSEMBLY: TypeAttributes = 0x00000007;
+	pub const VISIBILITY_MASK: TypeFlags = 0x00000007;
+	pub const NOT_PUBLIC: TypeFlags = 0x00000000;
+	pub const PUBLIC: TypeFlags = 0x00000001;
+	pub const NESTED_PUBLIC: TypeFlags = 0x00000002;
+	pub const NESTED_PRIVATE: TypeFlags = 0x00000003;
+	pub const NESTED_FAMILY: TypeFlags = 0x00000004;
+	pub const NESTED_ASSEMBLY: TypeFlags = 0x00000005;
+	pub const NESTED_FAMILY_AND_ASSEMBLY: TypeFlags = 0x00000006;
+	pub const NESTED_FAMILY_OR_ASSEMBLY: TypeFlags = 0x00000007;
 
 	//Class layout attributes
-	pub const LAYOUT_MASK: TypeAttributes = 0x00000018;
-	pub const AUTO_LAYOUT: TypeAttributes = 0x00000000;
-	pub const SEQUENTIAL_LAYOUT: TypeAttributes = 0x00000008;
-	pub const EXPLICIT_LAYOUT: TypeAttributes = 0x000000010;
+	pub const LAYOUT_MASK: TypeFlags = 0x00000018;
+	pub const AUTO_LAYOUT: TypeFlags = 0x00000000;
+	pub const SEQUENTIAL_LAYOUT: TypeFlags = 0x00000008;
+	pub const EXPLICIT_LAYOUT: TypeFlags = 0x000000010;
 
 	//Class semantics attributes
-	pub const CLASS_SEMANTICS_MASK: TypeAttributes = 0x000000020;
-	pub const SPECIAL_CLASS_SEMANTICS_MASK: TypeAttributes = 0x000000580;
-	pub const CLASS: TypeAttributes = 0x000000000;
-	pub const INTERFACE: TypeAttributes = 0x000000020;
-	pub const ABSTRACT: TypeAttributes = 0x000000080;
-	pub const SEALED: TypeAttributes = 0x0000000100;
-	pub const SPECIAL_NAME: TypeAttributes = 0x000000400;
+	pub const CLASS_SEMANTICS_MASK: TypeFlags = 0x000000020;
+	pub const SPECIAL_CLASS_SEMANTICS_MASK: TypeFlags = 0x000000580;
+	pub const CLASS: TypeFlags = 0x000000000;
+	pub const INTERFACE: TypeFlags = 0x000000020;
+	pub const ABSTRACT: TypeFlags = 0x000000080;
+	pub const SEALED: TypeFlags = 0x0000000100;
+	pub const SPECIAL_NAME: TypeFlags = 0x000000400;
 
 	//Implementation Attributes
-	pub const IMPORT: TypeAttributes = 0x000001000;
-	pub const SERIALIZABLE: TypeAttributes = 0x000002000;
+	pub const IMPORT: TypeFlags = 0x000001000;
+	pub const SERIALIZABLE: TypeFlags = 0x000002000;
 
 	//String formatting Attributes
-	pub const STRING_FORMAT_MASK: TypeAttributes = 0x0000030000;
-	pub const CUSTOM_STRING_FORMAT_MASK: TypeAttributes = 0x0000C00000;
-	pub const ANSI_CLASS: TypeAttributes = 0x0000000000;
-	pub const UNICODE_CLASS: TypeAttributes = 0x0000010000;
-	pub const AUTO_CLASS: TypeAttributes = 0x0000020000;
-	pub const CUSTOM_FORMAT_CLASS: TypeAttributes = 0x0000030000;
+	pub const STRING_FORMAT_MASK: TypeFlags = 0x0000030000;
+	pub const CUSTOM_STRING_FORMAT_MASK: TypeFlags = 0x0000C00000;
+	pub const ANSI_CLASS: TypeFlags = 0x0000000000;
+	pub const UNICODE_CLASS: TypeFlags = 0x0000010000;
+	pub const AUTO_CLASS: TypeFlags = 0x0000020000;
+	pub const CUSTOM_FORMAT_CLASS: TypeFlags = 0x0000030000;
 
 	//Class Initialization Attributes
-	pub const BEFORE_FIELD_INIT: TypeAttributes = 0x0010000000;
+	pub const BEFORE_FIELD_INIT: TypeFlags = 0x0010000000;
 
 	//Additional Flags
-	pub const RT_SPECIAL_NAME: TypeAttributes = 0x0000000800;
-	pub const HAS_SECURITY: TypeAttributes = 0x0000040000;
-	pub const IS_TYPE_FORWARDER: TypeAttributes = 0x0000200000;
+	pub const RT_SPECIAL_NAME: TypeFlags = 0x0000000800;
+	pub const HAS_SECURITY: TypeFlags = 0x0000040000;
+	pub const IS_TYPE_FORWARDER: TypeFlags = 0x0000200000;
 }
 
 #[derive(MetadataTable)]
 pub struct Field {
 	flags: FieldFlags,
 	#[heap_index(String)]
-	name: MetadataIndex,
+	name: HeapIndex,
 	#[heap_index(Blob)]
-	signature: MetadataIndex,
+	signature: HeapIndex,
 }
 
 pub mod field_flags {
@@ -213,11 +217,11 @@ pub struct MethodDef {
 	impl_flags: MethodImplFlags,
 	flags: MethodFlags,
 	#[heap_index(String)]
-	name: MetadataIndex,
+	name: HeapIndex,
 	#[heap_index(Blob)]
-	signature: MetadataIndex,
+	signature: HeapIndex,
 	#[table_index(Param)]
-	params: MetadataIndex,
+	params: TableIndex,
 }
 
 pub mod method_impl_flags {
@@ -264,7 +268,7 @@ pub struct Param {
 	flags: ParamFlags,
 	sequence: u16,
 	#[heap_index(String)]
-	name: MetadataIndex,
+	name: HeapIndex,
 }
 
 pub mod param_flags {
@@ -280,29 +284,29 @@ pub mod param_flags {
 #[derive(MetadataTable)]
 pub struct InterfaceImpl {
 	#[table_index(TypeRef)]
-	type_: MetadataIndex,
+	type_: TableIndex,
 	#[coded_index(TypeDefOrRef)]
-	interface: MetadataIndex,
+	interface: CodedIndex,
 }
 
 #[derive(MetadataTable)]
 pub struct MemberRef {
 	#[coded_index(MemberRefParent)]
-	parent: MetadataIndex,
+	parent: CodedIndex,
 	#[heap_index(String)]
-	name: MetadataIndex,
+	name: HeapIndex,
 	#[heap_index(Blob)]
-	signature: MetadataIndex,
+	signature: HeapIndex,
 }
 
 #[derive(MetadataTable)]
 pub struct CustomAttribute {
 	#[coded_index(HasCustomAttribute)]
-	parent: MetadataIndex,
+	parent: CodedIndex,
 	#[coded_index(CustomAttributeType)]
-	type_: MetadataIndex,
+	type_: CodedIndex,
 	#[heap_index(Blob)]
-	value: MetadataIndex,
+	value: HeapIndex,
 }
 
 #[derive(MetadataTable)]
@@ -310,9 +314,9 @@ pub struct Constant {
 	type_: ElementType,
 	__padding: u8,
 	#[coded_index(HasConstant)]
-	parent: MetadataIndex,
+	parent: CodedIndex,
 	#[heap_index(Blob)]
-	value: MetadataIndex,
+	value: HeapIndex,
 }
 
 #[repr(u8)]
@@ -361,24 +365,24 @@ pub struct ClassLayout {
 	packing_size: u16,
 	class_size: u32,
 	#[table_index(TypeDef)]
-	parent: MetadataIndex,
+	parent: TableIndex,
 }
 
 #[derive(MetadataTable)]
 pub struct PropertyMap {
 	#[table_index(TypeDef)]
-	parent: MetadataIndex,
+	parent: TableIndex,
 	#[table_index(Property)]
-	property_list: MetadataIndex,
+	property_list: TableIndex,
 }
 
 #[derive(MetadataTable)]
 pub struct Property {
 	flags: PropertyFlags,
 	#[heap_index(String)]
-	name: MetadataIndex,
+	name: HeapIndex,
 	#[heap_index(Blob)]
-	signature: MetadataIndex,
+	signature: HeapIndex,
 }
 
 pub mod property_flags {
@@ -393,9 +397,9 @@ pub mod property_flags {
 pub struct MethodSemantics {
 	semantics: MethodSemanticsFlags,
 	#[table_index(MethodDef)]
-	method: MetadataIndex,
+	method: TableIndex,
 	#[coded_index(HasSemantics)]
-	association: MetadataIndex,
+	association: CodedIndex,
 }
 
 pub mod method_semantics_flags {
@@ -411,42 +415,42 @@ pub mod method_semantics_flags {
 #[derive(MetadataTable)]
 pub struct TypeSpec {
 	#[heap_index(Blob)]
-	signature: MetadataIndex,
+	signature: HeapIndex,
 }
 
 #[derive(MetadataTable)]
 pub struct FieldMarshal {
 	#[coded_index(HasFieldMarshal)]
-	parent: MetadataIndex,
+	parent: CodedIndex,
 	#[heap_index(Blob)]
-	native_type: MetadataIndex,
+	native_type: HeapIndex,
 }
 
 #[derive(MetadataTable)]
 pub struct MethodImpl {
 	#[table_index(TypeDef)]
-	class: MetadataIndex,
+	class: TableIndex,
 	#[coded_index(MethodDefOrRef)]
-	body: MetadataIndex,
+	body: CodedIndex,
 	#[coded_index(MethodDefOrRef)]
-	declaration: MetadataIndex,
+	declaration: CodedIndex,
 }
 
 #[derive(MetadataTable)]
 pub struct ModuleRef {
 	#[heap_index(String)]
-	name: MetadataIndex,
+	name: HeapIndex,
 }
 
 #[derive(MetadataTable)]
 pub struct ImplMap {
 	mapping_flags: PInvokeAttributes,
 	#[coded_index(MemberForwarded)]
-	member_forwarded: MetadataIndex,
+	member_forwarded: CodedIndex,
 	#[heap_index(String)]
-	import_name: MetadataIndex,
+	import_name: HeapIndex,
 	#[table_index(ModuleRef)]
-	import_scope: MetadataIndex,
+	import_scope: TableIndex,
 }
 
 pub mod pinvoke_attributes {
@@ -458,40 +462,40 @@ pub mod pinvoke_attributes {
 pub struct DeclSecurity {
 	action: u16,
 	#[coded_index(HasDeclSecurity)]
-	parent: MetadataIndex,
+	parent: CodedIndex,
 	#[heap_index(Blob)]
-	permission_set: MetadataIndex,
+	permission_set: HeapIndex,
 }
 
 #[derive(MetadataTable)]
 pub struct FieldRVA {
 	rva: u32,
 	#[table_index(Field)]
-	field: MetadataIndex,
+	field: TableIndex,
 }
 
 #[derive(MetadataTable)]
 pub struct FieldLayout {
 	offset: u32,
 	#[table_index(Field)]
-	field: MetadataIndex,
+	field: TableIndex,
 }
 
 #[derive(MetadataTable)]
 pub struct EventMap {
 	#[table_index(TypeDef)]
-	parent: MetadataIndex,
+	parent: TableIndex,
 	#[table_index(Event)]
-	event_list: MetadataIndex,
+	event_list: TableIndex,
 }
 
 #[derive(MetadataTable)]
 pub struct Event {
 	flags: EventFlags,
 	#[heap_index(String)]
-	name: MetadataIndex,
+	name: HeapIndex,
 	#[coded_index(TypeDefOrRef)]
-	type_: MetadataIndex,
+	type_: CodedIndex,
 }
 
 pub mod event_flags {
@@ -504,8 +508,8 @@ pub mod event_flags {
 pub struct AssemblyTable<'l> {
 	bytes: &'l [u8],
 	row_size: usize,
-	str_size: MetadataIndexSize,
-	blob_size: MetadataIndexSize,
+	str_size: IndexSize,
+	blob_size: IndexSize,
 }
 
 #[derive(Debug, Clone)]
@@ -516,9 +520,9 @@ pub struct Assembly {
 	build_number: u16,
 	revision_number: u16,
 	flags: AssemblyFlags,
-	public_key: MetadataIndex,
-	name: MetadataIndex,
-	culture: MetadataIndex,
+	public_key: HeapIndex,
+	name: HeapIndex,
+	culture: HeapIndex,
 }
 
 #[repr(u32)]
@@ -557,9 +561,9 @@ impl ParseRow for AssemblyTable<'_> {
 			build_number: reader.read()?,
 			revision_number: reader.read()?,
 			flags: reader.read()?,
-			public_key: reader.read_index(self.blob_size)?,
-			name: reader.read_index(self.str_size)?,
-			culture: reader.read_index(self.str_size)?,
+			public_key: reader.read_heap_index(self.blob_size)?,
+			name: reader.read_heap_index(self.str_size)?,
+			culture: reader.read_heap_index(self.str_size)?,
 		})
 	}
 }
@@ -604,13 +608,13 @@ impl Assembly {
 	pub fn flags(&self) -> AssemblyFlags {
 		self.flags
 	}
-	pub fn public_key(&self) -> MetadataIndex {
+	pub fn public_key(&self) -> HeapIndex {
 		self.public_key
 	}
-	pub fn name(&self) -> MetadataIndex {
+	pub fn name(&self) -> HeapIndex {
 		self.name
 	}
-	pub fn culture(&self) -> MetadataIndex {
+	pub fn culture(&self) -> HeapIndex {
 		self.culture
 	}
 }
@@ -632,23 +636,23 @@ pub struct AssemblyRef {
 	revision_number: u16,
 	flags: AssemblyFlags,
 	#[heap_index(Blob)]
-	public_key: MetadataIndex,
+	public_key: HeapIndex,
 	#[heap_index(String)]
-	name: MetadataIndex,
+	name: HeapIndex,
 	#[heap_index(String)]
-	culture: MetadataIndex,
+	culture: HeapIndex,
 	#[heap_index(Blob)]
-	hash_value: MetadataIndex,
+	hash_value: HeapIndex,
 }
 
 #[derive(Clone)]
 pub struct StandAloneSignatureTable<'l> {
 	bytes: &'l [u8],
-	blob_size: MetadataIndexSize,
+	blob_size: IndexSize,
 }
 
 impl<'l> MetadataTable<'l> for StandAloneSignatureTable<'l> {
-	type Iter = std::option::IntoIter<Result<MetadataIndex, Error>>;
+	type Iter = std::option::IntoIter<Result<HeapIndex, Error>>;
 
 	fn bytes(&self) -> &'l [u8] {
 		self.bytes
@@ -665,10 +669,10 @@ impl<'l> MetadataTable<'l> for StandAloneSignatureTable<'l> {
 }
 
 impl ParseRow for StandAloneSignatureTable<'_> {
-	type Row = MetadataIndex;
+	type Row = HeapIndex;
 
 	fn parse_row(&self, reader: &mut ByteStream) -> Result<Self::Row, Error> {
-		reader.read_index(self.blob_size)
+		reader.read_heap_index(self.blob_size)
 	}
 }
 

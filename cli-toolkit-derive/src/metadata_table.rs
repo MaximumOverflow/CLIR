@@ -47,14 +47,14 @@ pub fn derive(ast: DeriveInput) -> TokenStream {
 					let field_name = value.to_case(Case::Snake);
 					let field_ident = Ident::new(&field_name, Span::call_site());
 
-					table_fields.insert(field_name.clone(), quote!(#field_ident: MetadataIndexSize));
+					table_fields.insert(field_name.clone(), quote!(#field_ident: IndexSize));
 					table_field_readings.insert(
 						field_name.clone(),
 						quote!(#field_ident: tables.idx_size(TableKind::#value_ident)),
 					);
 
 					row_size.push(quote!(tables.idx_size(TableKind::#value_ident) as usize));
-					row_parsing.push(quote!(#ident: reader.read_index(self.#field_ident)?));
+					row_parsing.push(quote!(#ident: reader.read_table_index(self.#field_ident)?));
 				}
 
 				"coded_index" => {
@@ -66,14 +66,14 @@ pub fn derive(ast: DeriveInput) -> TokenStream {
 					let field_name = value.to_case(Case::Snake);
 					let field_ident = Ident::new(&field_name, Span::call_site());
 
-					table_fields.insert(field_name.clone(), quote!(#field_ident: MetadataIndexSize));
+					table_fields.insert(field_name.clone(), quote!(#field_ident: IndexSize));
 					table_field_readings.insert(
 						field_name.clone(),
-						quote!(#field_ident: get_coded_index_size(CodedIndexKind::#value_ident, tables)),
+						quote!(#field_ident: CodedIndex::get_size(CodedIndexKind::#value_ident, tables)),
 					);
 
-					row_size.push(quote!(get_coded_index_size(CodedIndexKind::#value_ident, tables) as usize));
-					row_parsing.push(quote!(#ident: reader.read_index(self.#field_ident)?));
+					row_size.push(quote!(CodedIndex::get_size(CodedIndexKind::#value_ident, tables) as usize));
+					row_parsing.push(quote!(#ident: reader.read_coded_index(self.#field_ident)?));
 				}
 
 				"heap_index" => {
@@ -81,30 +81,30 @@ pub fn derive(ast: DeriveInput) -> TokenStream {
 					let value = attr.tokens.to_string();
 					match value.as_str() {
 						"(String)" => {
-							table_fields.insert("str_size".to_string(), quote!(str_size: MetadataIndexSize));
+							table_fields.insert("str_size".to_string(), quote!(str_size: IndexSize));
 							table_field_readings
 								.insert("str_size".to_string(), quote!(str_size: StringHeap::idx_size(tables)));
 
 							row_size.push(quote!(StringHeap::idx_size(tables) as usize));
-							row_parsing.push(quote!(#ident: reader.read_index(self.str_size)?));
+							row_parsing.push(quote!(#ident: reader.read_heap_index(self.str_size)?));
 						}
 
 						"(Blob)" => {
-							table_fields.insert("blob_size".to_string(), quote!(blob_size: MetadataIndexSize));
+							table_fields.insert("blob_size".to_string(), quote!(blob_size: IndexSize));
 							table_field_readings
 								.insert("blob_size".to_string(), quote!(blob_size: BlobHeap::idx_size(tables)));
 
 							row_size.push(quote!(BlobHeap::idx_size(tables) as usize));
-							row_parsing.push(quote!(#ident: reader.read_index(self.blob_size)?));
+							row_parsing.push(quote!(#ident: reader.read_heap_index(self.blob_size)?));
 						}
 
 						"(Guid)" => {
-							table_fields.insert("guid_size".to_string(), quote!(guid_size: MetadataIndexSize));
+							table_fields.insert("guid_size".to_string(), quote!(guid_size: IndexSize));
 							table_field_readings
 								.insert("guid_size".to_string(), quote!(guid_size: GuidHeap::idx_size(tables)));
 
 							row_size.push(quote!(GuidHeap::idx_size(tables) as usize));
-							row_parsing.push(quote!(#ident: reader.read_index(self.guid_size)?));
+							row_parsing.push(quote!(#ident: reader.read_heap_index(self.guid_size)?));
 						}
 
 						_ => unimplemented!(),

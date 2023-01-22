@@ -1,12 +1,10 @@
-use crate::raw::{
-	AssemblyRef, AssemblyRefTable, AssemblyTable, BlobHeap, MetadataHeap, MetadataTable, StringHeap, TableHeap,
-};
+use crate::raw::{Assembly as RawAssembly, AssemblyRefTable, AssemblyTable};
+use crate::raw::Error as ReadError;
+pub use crate::read::Type;
 pub use crate::read::*;
 use std::path::PathBuf;
-use std::fmt::{Debug, Formatter};
-use std::io::Read;
+use std::fmt::Debug;
 use std::rc::Rc;
-use crate::raw;
 
 #[derive(Debug)]
 pub struct AssemblyReader {
@@ -30,7 +28,7 @@ impl AssemblyReader {
 				}
 
 				let bytes = std::fs::read(&path).ok()?;
-				let assembly = raw::Assembly::try_from(bytes.as_slice()).ok()?;
+				let assembly = RawAssembly::try_from(bytes.as_slice()).ok()?;
 
 				let tables = assembly.get_heap::<TableHeap>().ok()??;
 				let strings = assembly.get_heap::<StringHeap>().ok()??;
@@ -76,11 +74,11 @@ impl AssemblyReader {
 					Ok(bytes) => bytes,
 				};
 
-				let assembly = match raw::Assembly::try_from(bytes.as_slice()) {
+				let assembly = match RawAssembly::try_from(bytes.as_slice()) {
 					Ok(assembly) => assembly,
 					Err(err) => {
 						return match err {
-							raw::Error::InvalidData(_, _) => Err(Error::InvalidAssembly(InvalidAssemblyError::Unknown)),
+							ReadError::InvalidData(_, _) => Err(Error::InvalidAssembly(InvalidAssemblyError::Unknown)),
 							error => Err(Error::ReadError(error)),
 						}
 					}
@@ -101,10 +99,11 @@ impl AssemblyReader {
 								Err(err) => return Err(Error::ReadError(err)),
 							};
 
-							let name = format!("{} {}",
+							let name = format! {
+								"{} {}",
 								strings.get_string(dependency.name()),
 								dependency.major_version(),
-							);
+							};
 
 							dependencies.push(self.read_assembly(&name)?)
 						}
@@ -112,6 +111,8 @@ impl AssemblyReader {
 
 					dependencies
 				};
+
+				let types = Type::read_all(blobs, tables, strings)?;
 
 				let assembly = {
 					let def = match get_table::<AssemblyTable>(&tables)?.iter().next() {
@@ -131,6 +132,8 @@ impl AssemblyReader {
 							build: def.build_number(),
 							revision: def.revision_number(),
 						},
+
+						types,
 						dependencies,
 					})
 				};
@@ -143,61 +146,7 @@ impl AssemblyReader {
 }
 
 #[derive(Debug)]
-pub enum Error {
-	ReadError(raw::Error),
-	IOError(std::io::Error),
-	AssemblyNotFound(String),
-	InvalidAssembly(InvalidAssemblyError),
-}
-
-#[derive(Debug)]
-pub enum InvalidAssemblyError {
-	Unknown,
-	MissingMetadataHeap,
-	MissingMetadataTable,
-	MissingMetadataTableField,
-}
-
 enum AssemblyEntry {
 	NotLoaded(PathBuf),
 	Loaded(Rc<Assembly>),
-}
-
-impl Debug for AssemblyEntry {
-	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-		match self {
-			AssemblyEntry::NotLoaded(path) => write!(f, "NotLoaded({:?})", path),
-			AssemblyEntry::Loaded(ass) => write!(f, "Loaded({:?})", ass.name)
-		}
-	}
-}
-
-fn get_heap<'l, T: MetadataHeap<'l>>(assembly: &'l raw::Assembly) -> Result<T, Error> {
-	match assembly.get_heap::<T>() {
-		Err(err) => Err(Error::ReadError(err)),
-		Ok(heap) => match heap {
-			None => Err(Error::InvalidAssembly(InvalidAssemblyError::MissingMetadataHeap)),
-			Some(heap) => Ok(heap),
-		},
-	}
-}
-
-fn get_table<'l, T: MetadataTable<'l>>(tables: &'l TableHeap<'l>) -> Result<T, Error> {
-	match tables.get_table::<T>() {
-		Err(err) => Err(Error::ReadError(err)),
-		Ok(table) => match table {
-			None => Err(Error::InvalidAssembly(InvalidAssemblyError::MissingMetadataTable)),
-			Some(table) => Ok(table),
-		},
-	}
-}
-
-fn try_get_table<'l, T: MetadataTable<'l>>(tables: &'l TableHeap<'l>) -> Result<Option<T>, Error> {
-	match tables.get_table::<T>() {
-		Err(err) => Err(Error::ReadError(err)),
-		Ok(table) => match table {
-			None => Ok(None),
-			Some(table) => Ok(Some(table)),
-		},
-	}
 }
