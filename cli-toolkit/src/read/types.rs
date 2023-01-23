@@ -1,97 +1,134 @@
-use crate::raw::{
-	BlobHeap, FieldTable, MetadataTable, MetadataToken, MetadataTokenKind, StringHeap, TableHeap, TableIndex,
-	TypeDefTable,
-};
-use crate::read::{Error, try_get_table};
-use std::collections::HashMap;
-use derivative::Derivative;
-use std::rc::Rc;
+use crate::raw;
+use crate::raw::{BlobHeap, CodedIndexKind, FieldTable, MetadataToken, MetadataTokenKind, StringHeap, TableHeap, TypeDef};
+use crate::schema::{Assembly, Type, TypeData};
+use crate::read::Error;
 
-#[derive(Derivative)]
-#[derivative(Debug)]
-pub struct Type {
-	token: MetadataToken,
-	name: String,
-	namespace: String,
-	fields: Vec<Rc<Field>>,
+pub struct TypeReader<'l> {
+	index: usize,
+	ty: &'l mut Type<'l>,
+	
+	def: TypeDef,
+	next: Option<TypeDef>,
+
+	blobs: BlobHeap<'l>,
+	tables: TableHeap<'l>,
+	strings: StringHeap<'l>,
+	assembly: &'l Assembly<'l>,
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub enum TypeKind {
-	Class,
-	Struct,
-	Interface,
-	Primitive,
+impl<'l> Type<'l> {
+	pub(crate) fn default() -> Self {
+		Self::Void
+	}
+	
+	pub(crate) fn read(
+		index: usize,
+		ty: &'l mut Type<'l>, 
+		def: TypeDef, 
+		next: Option<TypeDef>, 
+		
+		blobs: BlobHeap<'l>,
+		tables: TableHeap<'l>,
+		strings: StringHeap<'l>,
+		assembly: &'l Assembly<'l>,
+	) -> TypeReader<'l> {
+		TypeReader {
+			index,
+			ty,
+			def,
+			next,
+			blobs,
+			tables,
+			strings,
+			assembly,
+		}
+	}
 }
 
-#[derive(Debug)]
-pub struct Field {
-	token: MetadataToken,
-	name: String,
-}
-
-impl Type {
-	pub fn token(&self) -> MetadataToken {
-		self.token
+impl<'l> TypeReader<'l> {
+	pub(crate) fn initialize(&mut self) -> Result<(), Error> {
+		let mut data = TypeData {
+			fields: vec![],
+			base: MetadataToken(0),
+			assembly: self.assembly,
+			flags: self.def.flags(),
+			name: self.strings.get_string(self.def.name()).to_string(),
+			namespace: self.strings.get_string(self.def.namespace()).to_string(),
+			token: MetadataToken::new(self.index as u32 + 1, MetadataTokenKind::TypeDef),
+		};
+		
+		*self.ty = Type::Class(data);
+		
+		Ok(())
 	}
-
-	pub fn name(&self) -> &str {
-		&self.name
+	
+	pub(crate) fn populate(&mut self) -> Result<(), Error> {
+		let Type::Class(data) = self.ty else { unreachable!() };
+		let data = std::mem::replace(data, TypeData {
+			assembly: self.assembly,
+			name: "".to_string(),
+			namespace: "".to_string(),
+			flags: 0,
+			base: MetadataToken(0),
+			token: MetadataToken(0),
+			fields: vec![],
+		});
+		
+		self.read_base(data)
 	}
-
-	pub fn namespace(&self) -> &str {
-		&self.namespace
-	}
-
-	pub(super) fn read_all(
-		blobs: BlobHeap,
-		tables: TableHeap,
-		strings: StringHeap,
-	) -> Result<HashMap<MetadataToken, Rc<Type>>, Error> {
-		let mut types = HashMap::new();
-		let (type_table, field_table) =
-			(try_get_table::<TypeDefTable>(&tables)?, try_get_table::<FieldTable>(&tables)?);
-
-		if let (Some(type_table), Some(field_table)) = (type_table, field_table) {
-			let mut next_def = type_table.iter().skip(1);
-			for (index, def) in (1..).zip(type_table.iter()) {
-				let def = match def {
-					Ok(def) => def,
-					Err(err) => return Err(Error::ReadError(err)),
-				};
-
-				let mut type_rc = Rc::new(Type {
-					fields: vec![],
-					name: strings.get_string(def.name()).into(),
-					namespace: strings.get_string(def.namespace()).into(),
-					token: MetadataToken::new(index, MetadataTokenKind::TypeDef),
-				});
-
-				let ty = Rc::get_mut(&mut type_rc).unwrap();
-				let field_range = match next_def.next() {
-					Some(next) => {
-						let next = next.map_err(|e| Error::ReadError(e))?;
-						def.fields().0..next.fields().0
-					}
-					None => def.fields().0..field_table.len() as u32 + 1,
-				};
-
-				for index in field_range {
-					let index = TableIndex(index);
-					let def = field_table.get(index).map_err(|e| Error::ReadError(e))?;
-
-					let field = Rc::new(Field {
-						token: MetadataToken::new(index.0, MetadataTokenKind::Field),
-						name: strings.get_string(def.name()).into(),
-					});
-
-					ty.fields.push(field);
+	
+	fn read_base(&mut self, mut data: TypeData<'l>) -> Result<(), Error> {
+		let token = self.def.extends().decode(CodedIndexKind::TypeDefOrRef)
+			.ok_or(raw::Error::InvalidData(Some("Invalid field base type")))?;
+		
+		if data.name == "Program" {
+			println!();
+		}
+		
+		data.base = token;
+		match self.assembly.get_type(token) {
+			Some(base) => *self.ty = match base {
+				Type::Class(base) => match (base.namespace.as_str(), base.name.as_str()) {
+					("System", "ValueType") => Type::Struct(data),
+					_ => Type::Class(data),
+				}
+				
+				Type::Struct(base) => match (base.namespace.as_str(), base.name.as_str()) {
+					("System", "Enum") => Type::Struct(data),
+					base => unimplemented!("{:?}", base),
+				}
+				
+				Type::CustomUnknown(base) => {
+					Type::CustomUnknown(data)
+				},
+				
+				base => unimplemented!("{:?}", base),
+			},
+			
+			None => {
+				if data.namespace == "System" && data.name == "Object" {
+					*self.ty = Type::Class(data);
+					return Ok(());
+				}
+				
+				if data.flags & raw::type_flags::INTERFACE != 0 {
+					*self.ty = Type::Interface(data);
+					return Ok(())
 				}
 
-				types.insert(ty.token, type_rc);
+				*self.ty = Type::CustomUnknown(data)
 			}
-		}
-
-		Ok(types)
+		};
+		
+		Ok(())
+	}
+	
+	fn read_fields(&self, data: &mut TypeData) -> Result<(), Error> {
+		let field_table = match self.tables.get_table::<FieldTable>()? {
+			Some(table) => table,
+			None => return Ok(()),
+		};
+		
+		unimplemented!()
 	}
 }

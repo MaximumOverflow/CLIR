@@ -1,54 +1,26 @@
-mod assembly;
-mod reader;
-mod types;
+use crate::raw::TableKind;
 
-pub use types::*;
-pub use reader::*;
-pub use assembly::*;
-use crate::raw::{MetadataHeap, MetadataTable, TableHeap, StringHeap, BlobHeap, Assembly as RawAssembly};
+mod assembly;
+mod context;
+mod types;
 
 #[derive(Debug)]
 pub enum Error {
 	IOError(std::io::Error),
-	AssemblyNotFound(String),
 	ReadError(crate::raw::Error),
-	InvalidAssembly(InvalidAssemblyError),
+	MissingMetadataTable(TableKind),
+	MissingMetadataHeap(&'static str),
 }
 
-#[derive(Debug)]
-pub enum InvalidAssemblyError {
-	Unknown,
-	MissingMetadataHeap,
-	MissingMetadataTable,
-	MissingMetadataTableField,
-}
-
-fn get_heap<'l, T: MetadataHeap<'l>>(assembly: &'l RawAssembly) -> Result<T, Error> {
-	match assembly.get_heap::<T>() {
-		Err(err) => Err(Error::ReadError(err)),
-		Ok(heap) => match heap {
-			None => Err(Error::InvalidAssembly(InvalidAssemblyError::MissingMetadataHeap)),
-			Some(heap) => Ok(heap),
-		},
+impl From<std::io::Error> for Error {
+	fn from(value: std::io::Error) -> Self {
+		Self::IOError(value)
 	}
 }
 
-fn get_table<'l, T: MetadataTable<'l>>(tables: &'l TableHeap<'l>) -> Result<T, Error> {
-	match tables.get_table::<T>() {
-		Err(err) => Err(Error::ReadError(err)),
-		Ok(table) => match table {
-			None => Err(Error::InvalidAssembly(InvalidAssemblyError::MissingMetadataTable)),
-			Some(table) => Ok(table),
-		},
+impl From<crate::raw::Error> for Error {
+	fn from(value: crate::raw::Error) -> Self {
+		Self::ReadError(value)
 	}
 }
 
-fn try_get_table<'l, T: MetadataTable<'l>>(tables: &'l TableHeap<'l>) -> Result<Option<T>, Error> {
-	match tables.get_table::<T>() {
-		Err(err) => Err(Error::ReadError(err)),
-		Ok(table) => match table {
-			None => Ok(None),
-			Some(table) => Ok(Some(table)),
-		},
-	}
-}

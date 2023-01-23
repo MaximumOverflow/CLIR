@@ -91,7 +91,7 @@ impl<'l> MetadataHeap<'l> for BlobHeap<'l> {
 }
 
 impl<'l> BlobHeap<'l> {
-	pub fn get_blob(&self, index: MetadataToken) -> Result<&'l [u8], Error> {
+	pub fn get_blob(&self, index: HeapIndex) -> Result<&'l [u8], Error> {
 		let mut reader = ByteStream::new(self.bytes);
 		reader.seek(index.0 as usize)?;
 
@@ -107,7 +107,7 @@ impl<'l> BlobHeap<'l> {
 				let byte_2 = reader.read::<u8>()?;
 				(((byte_0 & 0x3F) as usize) << 16) + ((byte_1 as usize) << 8) + byte_2 as usize
 			} else {
-				return Err(Error::InvalidData(reader.position() - 1, None));
+				return Err(Error::InvalidData(None));
 			}
 		};
 

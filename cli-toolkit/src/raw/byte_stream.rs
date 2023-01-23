@@ -6,7 +6,7 @@ pub enum Error {
 	UnalignedRead,
 	OffsetOutOfBounds,
 	UnexpectedEndOfStream,
-	InvalidData(usize, Option<&'static str>),
+	InvalidData(Option<&'static str>),
 }
 
 mod private {
@@ -85,7 +85,7 @@ mod private {
 			let value = self.read::<T>()?;
 			match check(&value) {
 				true => Ok(value),
-				false => Err(InvalidData(self.position - size_of::<T>(), message)),
+				false => Err(InvalidData(message)),
 			}
 		}
 
@@ -140,7 +140,7 @@ mod private {
 		pub fn read_null_terminated_str(&mut self) -> Result<&'l str, Error> {
 			let bytes = self.read_u8_slice_until(0)?;
 			let bytes = &bytes[..bytes.len() - 1];
-			std::str::from_utf8(bytes).or(Err(InvalidData(self.position - bytes.len() + 1, None)))
+			std::str::from_utf8(bytes).or(Err(InvalidData(None)))
 		}
 
 		pub(crate) fn read_table_index(&mut self, size: IndexSize) -> Result<TableIndex, Error> {

@@ -100,8 +100,12 @@ impl MetadataToken {
 		if index == 0 {
 			MetadataToken(0)
 		} else {
-			MetadataToken((index & 0x00FFFFFF) | kind as u32)
+			MetadataToken(index | kind as u32)
 		}
+	}
+	
+	pub fn is_null(&self) -> bool {
+		self.0 == 0
 	}
 
 	pub fn index(&self) -> usize {
@@ -213,10 +217,10 @@ impl CodedIndex {
 		}
 	}
 
-	pub fn decode(&self, kind: CodedIndexKind) -> Option<(MetadataToken, MetadataTokenKind)> {
-		match kind {
+	pub fn decode(&self, kind: CodedIndexKind) -> Option<MetadataToken> {
+		let (index, kind) = match kind {
 			CodedIndexKind::TypeDefOrRef => Some((
-				MetadataToken(self.0 >> 2),
+				self.0 >> 2,
 				[
 					MetadataTokenKind::TypeDef,
 					MetadataTokenKind::TypeRef,
@@ -227,7 +231,7 @@ impl CodedIndex {
 			)),
 
 			CodedIndexKind::HasConstant => Some((
-				MetadataToken(self.0 >> 2),
+				self.0 >> 2,
 				[
 					MetadataTokenKind::Field,
 					MetadataTokenKind::Param,
@@ -238,7 +242,7 @@ impl CodedIndex {
 			)),
 
 			CodedIndexKind::HasCustomAttribute => Some((
-				MetadataToken(self.0 >> 5),
+				self.0 >> 5,
 				[
 					MetadataTokenKind::Method,
 					MetadataTokenKind::Field,
@@ -267,14 +271,14 @@ impl CodedIndex {
 			)),
 
 			CodedIndexKind::HasFieldMarshal => Some((
-				MetadataToken(self.0 >> 1),
+				self.0 >> 1,
 				[MetadataTokenKind::Field, MetadataTokenKind::Param]
 					.get(((self.0 & 1) as usize) as usize)?
 					.clone(),
 			)),
 
 			CodedIndexKind::HasDeclSecurity => Some((
-				MetadataToken(self.0 >> 2),
+				self.0 >> 2,
 				[
 					MetadataTokenKind::TypeDef,
 					MetadataTokenKind::Method,
@@ -285,7 +289,7 @@ impl CodedIndex {
 			)),
 
 			CodedIndexKind::MemberRefParent => Some((
-				MetadataToken(self.0 >> 3),
+				self.0 >> 3,
 				[
 					MetadataTokenKind::TypeDef,
 					MetadataTokenKind::TypeRef,
@@ -298,28 +302,28 @@ impl CodedIndex {
 			)),
 
 			CodedIndexKind::HasSemantics => Some((
-				MetadataToken(self.0 >> 1),
+				self.0 >> 1,
 				[MetadataTokenKind::Event, MetadataTokenKind::Property]
 					.get((self.0 & 1) as usize)?
 					.clone(),
 			)),
 
 			CodedIndexKind::MethodDefOrRef => Some((
-				MetadataToken(self.0 >> 1),
+				self.0 >> 1,
 				[MetadataTokenKind::Method, MetadataTokenKind::MemberRef]
 					.get((self.0 & 1) as usize)?
 					.clone(),
 			)),
 
 			CodedIndexKind::MemberForwarded => Some((
-				MetadataToken(self.0 >> 1),
+				self.0 >> 1,
 				[MetadataTokenKind::Field, MetadataTokenKind::Method]
 					.get((self.0 & 1) as usize)?
 					.clone(),
 			)),
 
 			CodedIndexKind::Implementation => Some((
-				MetadataToken(self.0 >> 2),
+				self.0 >> 2,
 				[
 					MetadataTokenKind::File,
 					MetadataTokenKind::AssemblyRef,
@@ -330,7 +334,7 @@ impl CodedIndex {
 			)),
 
 			CodedIndexKind::CustomAttributeType => Some((
-				MetadataToken(self.0 >> 3),
+				self.0 >> 3,
 				match (self.0 & 7) as usize {
 					2 => Some(MetadataTokenKind::Method),
 					3 => Some(MetadataTokenKind::MemberRef),
@@ -339,7 +343,7 @@ impl CodedIndex {
 			)),
 
 			CodedIndexKind::ResolutionScope => Some((
-				MetadataToken(self.0 >> 2),
+				self.0 >> 2,
 				[
 					MetadataTokenKind::Module,
 					MetadataTokenKind::ModuleRef,
@@ -351,14 +355,14 @@ impl CodedIndex {
 			)),
 
 			CodedIndexKind::TypeOrMethodDef => Some((
-				MetadataToken(self.0 >> 1),
+				self.0 >> 1,
 				[MetadataTokenKind::TypeDef, MetadataTokenKind::Method]
 					.get((self.0 & 1) as usize)?
 					.clone(),
 			)),
 
 			CodedIndexKind::HasCustomDebugInformation => Some((
-				MetadataToken(self.0 >> 5),
+				self.0 >> 5,
 				[
 					MetadataTokenKind::Method,
 					MetadataTokenKind::Field,
@@ -390,7 +394,9 @@ impl CodedIndex {
 				.get((self.0 & 31) as usize)?
 				.clone(),
 			)),
-		}
+		}?;
+		
+		Some(MetadataToken::new(index, kind))
 	}
 
 	//noinspection DuplicatedCode
