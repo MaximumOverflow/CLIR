@@ -89,11 +89,15 @@ impl FromByteStream<'_> for PeOptionalHeader {
 				};
 
 				let section_alignment = reader.read()?;
-				let file_alignment =
-					reader.read_checked(|v| *v == 0x200 || *v == 0x1000, Some("Invalid value for NTSpecificFields::file_alignment"))?;
+				let file_alignment = reader.read_checked(
+					|v| *v == 0x200 || *v == 0x1000,
+					Some("Invalid value for NTSpecificFields::file_alignment"),
+				)?;
 
 				if section_alignment < file_alignment {
-					return Err(Error::InvalidData(Some("Invalid value for NTSpecificFields::section_alignment")));
+					return Err(Error::InvalidData(Some(
+						"Invalid value for NTSpecificFields::section_alignment",
+					)));
 				}
 
 				NTSpecificFields {

@@ -10,8 +10,15 @@ pub enum Error {
 }
 
 mod private {
-	use std::mem::{align_of, size_of};
+	use std::fs::File;
+	use std::io::Read;
+	use std::ptr::null_mut;
+	use std::alloc::Layout;
+	use std::marker::PhantomData;
 	use crate::raw::Error::*;
+	use std::path::{Path, PathBuf};
+	use std::mem::{align_of, size_of};
+	use std::ops::{Deref, DerefMut};
 	use crate::raw::{CodedIndex, Error, IndexSize, TableIndex, HeapIndex};
 
 	#[derive(Debug, Clone)]
@@ -21,8 +28,8 @@ mod private {
 	}
 
 	pub trait FromByteStream<'l>
-	where
-		Self: Sized,
+		where
+			Self: Sized,
 	{
 		fn from_byte_stream(stream: &'l mut ByteStream) -> Result<Self, Error>;
 	}
@@ -168,6 +175,97 @@ mod private {
 			};
 
 			Ok(CodedIndex(value))
+		}
+	}
+
+	pub struct AlignedBuffer<'l> {
+		len: usize,
+		data: *mut u8,
+		phantom: PhantomData<&'l u8>
+	}
+
+	impl AlignedBuffer<'_> {
+		fn alloc_new(len: usize) -> Self {
+			if len == 0 {
+				return Self { len, data: null_mut(), phantom: PhantomData };
+			}
+
+			let layout = Layout::from_size_align(len, 8).unwrap();
+			unsafe {
+				Self {
+					len,
+					data: std::alloc::alloc(layout),
+					phantom: PhantomData,
+				}
+			}
+		}
+	}
+
+	impl Default for AlignedBuffer<'_> {
+		fn default() -> Self {
+			Self {
+				len: 0,
+				data: null_mut(),
+				phantom: PhantomData,
+			}
+		}
+	}
+
+	impl<'l> Deref for AlignedBuffer<'l> {
+		type Target = [u8];
+
+		fn deref(&self) -> &'l Self::Target {
+			unsafe { std::slice::from_raw_parts(self.data, self.len) }
+		}
+	}
+
+	impl<'l> DerefMut for AlignedBuffer<'l> {
+		fn deref_mut(&mut self) -> &'l mut Self::Target {
+			unsafe { std::slice::from_raw_parts_mut(self.data, self.len) }
+		}
+	}
+
+	impl TryFrom<&[u8]> for AlignedBuffer<'_> {
+		type Error = std::io::Error;
+		fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
+			let mut buffer = Self::alloc_new(bytes.len());
+			buffer.copy_from_slice(bytes);
+			Ok(buffer)
+		}
+	}
+
+	impl TryFrom<&Path> for AlignedBuffer<'_> {
+		type Error = std::io::Error;
+		fn try_from(path: &Path) -> Result<Self, Self::Error> {
+			let len = path.metadata()?.len() as usize;
+			let mut buffer = Self::alloc_new(len);
+			let mut file = File::open(path)?;
+			file.read_exact(&mut buffer);
+			Ok(buffer)
+		}
+	}
+
+	impl TryFrom<PathBuf> for AlignedBuffer<'_> {
+		type Error = std::io::Error;
+		fn try_from(path: PathBuf) -> Result<Self, Self::Error> {
+			let len = path.metadata()?.len() as usize;
+			let mut buffer = Self::alloc_new(len);
+			let mut file = File::open(path)?;
+			file.read_exact(&mut buffer);
+			Ok(buffer)
+		}
+	}
+
+	impl Drop for AlignedBuffer<'_> {
+		fn drop(&mut self) {
+			if self.len == 0 {
+				return;
+			}
+
+			unsafe {
+				let layout = Layout::from_size_align(self.len, 8).unwrap();
+				std::alloc::dealloc(self.data, layout);
+			}
 		}
 	}
 }

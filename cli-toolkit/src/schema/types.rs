@@ -22,14 +22,14 @@ pub enum Type<'l> {
 	Class(TypeData<'l>),
 	Struct(TypeData<'l>),
 	Interface(TypeData<'l>),
-	
+
 	NotLoaded(MetadataToken),
 	CustomUnknown(TypeData<'l>),
 }
 
 pub struct TypeData<'l> {
 	pub(crate) assembly: &'l Assembly<'l>,
-	
+
 	pub(crate) name: String,
 	pub(crate) namespace: String,
 	pub(crate) flags: TypeFlags,
@@ -54,7 +54,7 @@ impl Type<'_> {
 			Type::CustomUnknown(data) => (data.name.as_str(), data.namespace.as_str()),
 			_ => return false,
 		};
-		
+
 		ty_name == name && ty_namespace == namespace
 	}
 }
@@ -83,7 +83,7 @@ impl Debug for TypeData<'_> {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
 		let missing = &Type::NotLoaded(self.base);
 		let base = self.assembly.get_type(self.base).unwrap_or(missing);
-		
+
 		f.debug_struct("TypeData")
 			.field("token", &self.token)
 			.field("name", &self.name)

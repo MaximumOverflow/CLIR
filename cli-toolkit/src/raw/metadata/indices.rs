@@ -103,7 +103,7 @@ impl MetadataToken {
 			MetadataToken(index | kind as u32)
 		}
 	}
-	
+
 	pub fn is_null(&self) -> bool {
 		self.0 == 0
 	}
@@ -395,7 +395,7 @@ impl CodedIndex {
 				.clone(),
 			)),
 		}?;
-		
+
 		Some(MetadataToken::new(index, kind))
 	}
 

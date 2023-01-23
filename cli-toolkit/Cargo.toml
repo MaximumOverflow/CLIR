@@ -24,7 +24,6 @@ uuid = "1.2.2"
 indoc = "1.0.8"
 paste = "1.0.11"
 bitvec = "1.0.1"
-align-data = "0.1.0"
 derivative = "2.2.0"
 lazy_static = "1.4.0"
 strum = { version = "0.24", features = ["derive"] }

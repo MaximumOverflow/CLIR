@@ -1,8 +1,8 @@
 use crate::raw::{AssemblyFlags, MetadataToken, MetadataTokenKind};
-use crate::schema::Type;
+use std::fmt::{Debug, Display, Formatter};
 use crate::schema::context::Context;
 use crate::schema::types::TypeData;
-use std::fmt::{Debug, Display, Formatter};
+use crate::schema::Type;
 
 pub struct Assembly<'l> {
 	pub(crate) ctx: &'l Context<'l>,
@@ -10,7 +10,7 @@ pub struct Assembly<'l> {
 
 	pub(crate) types: Vec<Type<'l>>,
 	pub(crate) type_refs: Vec<(MetadataToken, String, String)>,
-	
+
 	pub(crate) fields: Vec<TypeData<'l>>,
 	pub(crate) dependencies: Vec<AssemblyRef>,
 }
@@ -48,7 +48,7 @@ pub(crate) struct AssemblyRef {
 	pub(crate) ident_key: String,
 }
 
-impl <'l> Assembly<'l> {
+impl<'l> Assembly<'l> {
 	pub fn find_type(&'l self, name: &str, namespace: &str) -> Option<&'l Type<'l>> {
 		if let Some(ty) = self.types.iter().find(|ty| ty.matches_name(name, namespace)) {
 			return Some(ty);
@@ -57,15 +57,15 @@ impl <'l> Assembly<'l> {
 		for assembly in self.dependencies.iter() {
 			let Some(assembly) = self.ctx.assembly_map.get(&assembly.ident_key) else { continue };
 			let Some(assembly) = self.ctx.assembly_vec.get(*assembly) else { continue };
-			
+
 			if let Some(ty) = assembly.find_type(name, namespace) {
-				return Some(ty)
+				return Some(ty);
 			}
 		}
-		
+
 		None
 	}
-	
+
 	pub fn get_type(&'l self, token: MetadataToken) -> Option<&'l Type<'l>> {
 		match token.token_kind() {
 			MetadataTokenKind::TypeDef => self.types.get((token.index() - 1) as usize),
@@ -80,7 +80,7 @@ impl <'l> Assembly<'l> {
 					}
 					_ => unimplemented!("{:?}", token.token_kind()),
 				}
-			},
+			}
 			_ => None,
 		}
 	}
@@ -122,7 +122,7 @@ impl Debug for Deps<'_> {
 		for assembly in self.0 {
 			list.entry(&format_args!("\"{} {}\"", assembly.name, assembly.version));
 		}
-		
+
 		list.finish()
 	}
 }
