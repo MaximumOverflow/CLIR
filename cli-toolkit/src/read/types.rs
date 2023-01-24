@@ -134,14 +134,25 @@ impl<'l> TypeReader<'l> {
 				Some(base_ref) => {
 					let base = base_ref.deref();
 					match base {
-						Type::Class(base) => {
-							return set_ty! {
-								index,
-								types,
-								Type::Class(data),
-								base_ref
+						Type::Class(base) => match (base.namespace.as_str(), base.name.as_str(), base.flags) {
+							("System", "ValueType", 0x102081) => {
+								return set_ty! {
+									index,
+									types,
+									Type::Struct(data),
+									base_ref
+								}
 							}
-						}
+
+							_ => {
+								return set_ty! {
+									index,
+									types,
+									Type::Class(data),
+									base_ref
+								}
+							}
+						},
 
 						Type::Uninitialized(base) => match base.token.token_kind() {
 							MetadataTokenKind::TypeDef => {
@@ -162,6 +173,19 @@ impl<'l> TypeReader<'l> {
 								base_ref
 							}
 						}
+
+						Type::Struct(base) => match (base.namespace.as_str(), base.name.as_str(), base.flags) {
+							("System", "Enum", 0x102081) => {
+								return set_ty! {
+									index,
+									types,
+									Type::Enum(data),
+									base_ref
+								}
+							}
+
+							_ => unimplemented!("{:?}", base),
+						},
 
 						_ => unimplemented!("{:?}", base),
 					}
