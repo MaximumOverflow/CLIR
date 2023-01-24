@@ -123,7 +123,7 @@ pub struct TypeDef {
 	#[heap_index(String)]
 	namespace: HeapIndex,
 	#[coded_index(TypeDefOrRef)]
-	extends: CodedIndex,
+	base_type: CodedIndex,
 	#[table_index(Field)]
 	fields: TableIndex,
 	#[table_index(MethodDef)]

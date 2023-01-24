@@ -3,25 +3,29 @@ use crate::raw::{
 	MetadataTableImpl, StringHeap, TableHeap, TableIndex, TypeDefTable, TypeRefTable,
 };
 use crate::schema::{Assembly, AssemblyName, AssemblyRef, AssemblyVersion, Context, Type};
+use crate::utilities::get_mut_unchecked;
+use std::marker::PhantomData;
 use lazy_static::lazy_static;
 use std::iter::repeat_with;
+use std::rc::{Rc, Weak};
 use crate::read::Error;
 use std::path::PathBuf;
+use std::ptr::null;
 use crate::raw;
 
 pub(crate) struct AssemblyReader<'l> {
 	bytes: AlignedBuffer<'l>,
-	assembly: &'l mut Assembly<'l>,
+
+	blobs: BlobHeap<'l>,
+	tables: TableHeap<'l>,
+	strings: StringHeap<'l>,
+	raw_assembly: raw::Assembly<'l>,
 }
 
-impl<'l> Assembly<'l> {
+impl Assembly {
 	pub(crate) fn default() -> Self {
-		lazy_static! {
-			static ref EMPTY_CTX: Context<'static> = Context::default();
-		}
-
 		Self {
-			ctx: &EMPTY_CTX,
+			ctx: Weak::new(),
 			name: AssemblyName {
 				flags: 0,
 				public_key: vec![],
@@ -35,30 +39,41 @@ impl<'l> Assembly<'l> {
 				},
 			},
 
-			types: vec![],
+			types: Rc::new([]),
 			type_refs: vec![],
-
-			fields: vec![],
 			dependencies: vec![],
 		}
-	}
-
-	pub(crate) fn read(assembly: &'l mut Assembly<'l>, bytes: AlignedBuffer<'l>) -> Result<AssemblyReader<'l>, Error> {
-		Ok(AssemblyReader { bytes, assembly })
 	}
 }
 
 impl<'l> AssemblyReader<'l> {
-	pub(crate) fn get_ident(&self) -> Result<String, Error> {
-		let raw = crate::raw::Assembly::try_from(self.bytes.as_ref())?;
-		let tables = raw
+	pub(super) fn new(bytes: AlignedBuffer<'l>) -> Result<Self, Error> {
+		let raw_assembly = raw::Assembly::try_from(unsafe { std::mem::transmute::<_, &'l [u8]>(bytes.as_ref()) })?;
+
+		let blobs = raw_assembly
+			.get_heap::<BlobHeap>()?
+			.ok_or(Error::MissingMetadataHeap(BlobHeap::cli_identifier()))?;
+
+		let tables = raw_assembly
 			.get_heap::<TableHeap>()?
 			.ok_or(Error::MissingMetadataHeap(TableHeap::cli_identifier()))?;
-		let strings = raw
+
+		let strings = raw_assembly
 			.get_heap::<StringHeap>()?
 			.ok_or(Error::MissingMetadataHeap(StringHeap::cli_identifier()))?;
 
-		let def = tables
+		Ok(Self {
+			bytes,
+			blobs,
+			tables,
+			strings,
+			raw_assembly,
+		})
+	}
+
+	pub(super) fn get_ident(&self) -> Result<String, Error> {
+		let def = self
+			.tables
 			.get_table::<AssemblyTable>()?
 			.ok_or(Error::MissingMetadataTable(AssemblyTable::cli_identifier()))?
 			.get(TableIndex(1))?;
@@ -67,67 +82,51 @@ impl<'l> AssemblyReader<'l> {
 		let minor = def.minor_version();
 		let build = def.build_number();
 		let revision = def.revision_number();
-		let name = strings.get_string(def.name()).to_string();
-		let culture = strings.get_string(def.culture()).to_string();
+		let name = self.strings.get_string(def.name()).to_string();
+		let culture = self.strings.get_string(def.culture()).to_string();
 
 		Ok(format!("{} {} {}.{}.{}.{}", name, culture, major, minor, build, revision))
 	}
 
-	pub(crate) fn read(mut self) -> Result<(), Error> {
-		let bytes = std::mem::take(&mut self.bytes);
-		let raw = crate::raw::Assembly::try_from(bytes.as_ref())?;
-
-		let blobs = raw
-			.get_heap::<BlobHeap>()?
-			.ok_or(Error::MissingMetadataHeap(BlobHeap::cli_identifier()))?;
-		let tables = raw
-			.get_heap::<TableHeap>()?
-			.ok_or(Error::MissingMetadataHeap(TableHeap::cli_identifier()))?;
-		let strings = raw
-			.get_heap::<StringHeap>()?
-			.ok_or(Error::MissingMetadataHeap(StringHeap::cli_identifier()))?;
-
-		self.read_assembly_name(blobs, strings, tables)?;
-		self.read_assembly_refs(blobs, strings, tables)?;
-		self.read_assembly_type_refs(strings, tables)?;
-		self.read_assembly_types(blobs, strings, tables)?;
-		Ok(())
-	}
-
-	fn read_assembly_name(&mut self, blobs: BlobHeap, strings: StringHeap, tables: TableHeap) -> Result<(), Error> {
-		let def = tables
+	pub(super) fn read_assembly_definition(&self, mut assembly: Rc<Assembly>) -> Result<Rc<Assembly>, Error> {
+		let def = self
+			.tables
 			.get_table::<AssemblyTable>()?
 			.ok_or(Error::MissingMetadataTable(AssemblyTable::cli_identifier()))?
 			.get(TableIndex(1))?;
 
-		let assembly_name = &mut self.assembly.name;
-		let assembly_version = &mut assembly_name.version;
+		{
+			let assembly = Rc::get_mut(&mut assembly).unwrap();
 
-		assembly_name.flags = def.flags();
-		assembly_name.name = strings.get_string(def.name()).to_string();
-		assembly_name.culture = strings.get_string(def.culture()).to_string();
-		assembly_name.public_key = blobs.get_blob(def.public_key())?.to_vec();
+			let assembly_name = &mut assembly.name;
+			let assembly_version = &mut assembly_name.version;
 
-		assembly_version.major = def.major_version();
-		assembly_version.minor = def.minor_version();
-		assembly_version.build = def.build_number();
-		assembly_version.revision = def.revision_number();
+			assembly_name.flags = def.flags();
+			assembly_name.name = self.strings.get_string(def.name()).to_string();
+			assembly_name.culture = self.strings.get_string(def.culture()).to_string();
+			assembly_name.public_key = self.blobs.get_blob(def.public_key())?.to_vec();
 
-		Ok(())
+			assembly_version.major = def.major_version();
+			assembly_version.minor = def.minor_version();
+			assembly_version.build = def.build_number();
+			assembly_version.revision = def.revision_number();
+		}
+
+		Ok(assembly)
 	}
 
-	fn read_assembly_refs(&mut self, blobs: BlobHeap, strings: StringHeap, tables: TableHeap) -> Result<(), Error> {
-		let table = match tables.get_table::<AssemblyRefTable>()? {
+	pub(super) fn read_assembly_refs(&self, assembly: &mut Assembly) -> Result<(), Error> {
+		let table = match self.tables.get_table::<AssemblyRefTable>()? {
 			Some(table) => table,
 			None => return Ok(()),
 		};
 
-		self.assembly.dependencies = Vec::with_capacity(table.len());
+		assembly.dependencies = Vec::with_capacity(table.len());
 		for ass_ref in table.iter() {
 			let ass_ref = ass_ref?;
 
-			let name = strings.get_string(ass_ref.name()).to_string();
-			let culture = strings.get_string(ass_ref.culture()).to_string();
+			let name = self.strings.get_string(ass_ref.name()).to_string();
+			let culture = self.strings.get_string(ass_ref.culture()).to_string();
 			let version = AssemblyVersion {
 				major: ass_ref.major_version(),
 				minor: ass_ref.minor_version(),
@@ -135,10 +134,10 @@ impl<'l> AssemblyReader<'l> {
 				revision: ass_ref.revision_number(),
 			};
 
-			self.assembly.dependencies.push(AssemblyRef {
+			assembly.dependencies.push(AssemblyRef {
 				flags: ass_ref.flags(),
-				public_key: blobs.get_blob(ass_ref.public_key())?.to_vec(),
-				hash_value: blobs.get_blob(ass_ref.public_key())?.to_vec(),
+				public_key: self.blobs.get_blob(ass_ref.public_key())?.to_vec(),
+				hash_value: self.blobs.get_blob(ass_ref.public_key())?.to_vec(),
 				ident_key: format! {
 					"{} {} {}.{}.{}.{}",
 					name, culture,
@@ -156,57 +155,48 @@ impl<'l> AssemblyReader<'l> {
 		Ok(())
 	}
 
-	fn read_assembly_type_refs(&mut self, strings: StringHeap, tables: TableHeap) -> Result<(), Error> {
-		let table = match tables.get_table::<TypeRefTable>()? {
+	pub(super) fn read_assembly_type_refs(&self, assembly: &mut Assembly) -> Result<(), Error> {
+		let table = match self.tables.get_table::<TypeRefTable>()? {
 			Some(table) => table,
 			None => return Ok(()),
 		};
 
-		self.assembly.type_refs = Vec::with_capacity(table.len());
+		assembly.type_refs = Vec::with_capacity(table.len());
 		for ty in table.iter() {
 			let ty = ty?;
-			let name = strings.get_string(ty.type_name()).to_string();
-			let namespace = strings.get_string(ty.type_namespace()).to_string();
+			let name = self.strings.get_string(ty.type_name()).to_string();
+			let namespace = self.strings.get_string(ty.type_namespace()).to_string();
 			let token = ty
 				.resolution_scope()
 				.decode(CodedIndexKind::ResolutionScope)
 				.ok_or(raw::Error::InvalidData(Some("Invalid resolution scope")))?;
 
-			self.assembly.type_refs.push((token, namespace, name))
+			assembly.type_refs.push((token, namespace, name))
 		}
 
 		Ok(())
 	}
 
-	fn read_assembly_types(&mut self, blobs: BlobHeap, strings: StringHeap, tables: TableHeap) -> Result<(), Error> {
-		let table = match tables.get_table::<TypeDefTable>()? {
+	pub(super) fn read_assembly_types(&self, assembly: Rc<Assembly>) -> Result<(), Error> {
+		let table = match self.tables.get_table::<TypeDefTable>()? {
 			Some(table) => table,
 			None => return Ok(()),
 		};
 
-		self.assembly.types = repeat_with(Type::default).take(table.len()).collect();
+		let mut types = Rc::from_iter(repeat_with(Type::default).take(table.len()));
 
-		let types = unsafe {
-			let ptr = self.assembly.types.as_mut_ptr() as *mut Type<'l>;
-			(0..self.assembly.types.len()).map(move |i| std::mem::transmute(&mut *ptr.add(i)))
-		};
-
-		let mut next_def = table.iter().skip(1);
-		let iter = types.zip(table.iter()).enumerate();
-
-		//Initialize types
-		for (index, (ty, def)) in iter.clone() {
-			let def = def?;
-			let mut reader = Type::read(index, ty, def, None, blobs, tables, strings, self.assembly);
-			reader.initialize()?;
+		for index in 0..table.len() {
+			let reader = Type::read(self.blobs, self.tables, self.strings, table.clone(), assembly.clone());
+			reader.read_type_definition(index, &mut types);
 		}
 
-		//Populate types
-		for (index, (ty, def)) in iter.clone() {
-			let def = def?;
-			let mut reader = Type::read(index, ty, def, None, blobs, tables, strings, self.assembly);
-			reader.populate()?;
+		for index in 0..table.len() {
+			let reader = Type::read(self.blobs, self.tables, self.strings, table.clone(), assembly.clone());
+			reader.read_base(index, &mut types);
 		}
+
+		let mut_assembly = unsafe { get_mut_unchecked(&assembly) };
+		mut_assembly.types = types;
 
 		Ok(())
 	}

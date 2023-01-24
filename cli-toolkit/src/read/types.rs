@@ -1,140 +1,180 @@
+use crate::raw::{
+	BlobHeap, CodedIndexKind, FieldTable, MetadataTable, MetadataToken, MetadataTokenKind, StringHeap, TableHeap,
+	TableIndex, type_flags, TypeDef, TypeDefTable,
+};
+use crate::schema::{Assembly, get_type, Type, TypeData};
+use std::rc::{Rc, Weak};
+use std::cell::RefCell;
+use crate::read::{Error, types};
+use std::ops::{Deref, DerefMut};
+use std::ptr::null;
+use bitvec::index;
 use crate::raw;
-use crate::raw::{BlobHeap, CodedIndexKind, FieldTable, MetadataToken, MetadataTokenKind, StringHeap, TableHeap, TypeDef};
-use crate::schema::{Assembly, Type, TypeData};
-use crate::read::Error;
 
 pub struct TypeReader<'l> {
-	index: usize,
-	ty: &'l mut Type<'l>,
-
-	def: TypeDef,
-	next: Option<TypeDef>,
-
 	blobs: BlobHeap<'l>,
 	tables: TableHeap<'l>,
+	assembly: Rc<Assembly>,
 	strings: StringHeap<'l>,
-	assembly: &'l Assembly<'l>,
+	type_defs: TypeDefTable<'l>,
 }
 
-impl<'l> Type<'l> {
+impl Type {
 	pub(crate) fn default() -> Self {
 		Self::Void
 	}
 
-	pub(crate) fn read(
-		index: usize,
-		ty: &'l mut Type<'l>,
-		def: TypeDef,
-		next: Option<TypeDef>,
-
+	pub(crate) fn read<'l>(
 		blobs: BlobHeap<'l>,
 		tables: TableHeap<'l>,
 		strings: StringHeap<'l>,
-		assembly: &'l Assembly<'l>,
+		type_defs: TypeDefTable<'l>,
+		assembly: Rc<Assembly>,
 	) -> TypeReader<'l> {
 		TypeReader {
-			index,
-			ty,
-			def,
-			next,
 			blobs,
 			tables,
 			strings,
+			type_defs,
 			assembly,
 		}
 	}
 }
 
-impl<'l> TypeReader<'l> {
-	pub(crate) fn initialize(&mut self) -> Result<(), Error> {
-		let mut data = TypeData {
-			fields: vec![],
+impl TypeData {
+	pub(crate) fn default() -> TypeData {
+		Self {
+			assembly: Weak::new(),
+			name: "".to_string(),
+			namespace: "".to_string(),
+			flags: 0,
 			base: MetadataToken(0),
-			assembly: self.assembly,
-			flags: self.def.flags(),
-			name: self.strings.get_string(self.def.name()).to_string(),
-			namespace: self.strings.get_string(self.def.namespace()).to_string(),
-			token: MetadataToken::new(self.index as u32 + 1, MetadataTokenKind::TypeDef),
-		};
-
-		*self.ty = Type::Class(data);
-
-		Ok(())
+			token: MetadataToken(0),
+			fields: vec![],
+		}
 	}
+}
 
-	pub(crate) fn populate(&mut self) -> Result<(), Error> {
-		let Type::Class(data) = self.ty else { unreachable!() };
-		let data = std::mem::replace(
-			data,
-			TypeData {
-				assembly: self.assembly,
-				name: "".to_string(),
-				namespace: "".to_string(),
-				flags: 0,
-				base: MetadataToken(0),
-				token: MetadataToken(0),
-				fields: vec![],
-			},
-		);
+impl<'l> TypeReader<'l> {
+	pub(crate) fn read_type_definition(&self, index: usize, types: &mut Rc<[Type]>) -> Result<(), Error> {
+		let metadata_index = (index + 1) as u32;
+		let def = self.type_defs.get(TableIndex(metadata_index))?;
 
-		self.read_base(data)
-	}
-
-	fn read_base(&mut self, mut data: TypeData<'l>) -> Result<(), Error> {
-		let token = self
-			.def
-			.extends()
+		let base = def
+			.base_type()
 			.decode(CodedIndexKind::TypeDefOrRef)
 			.ok_or(raw::Error::InvalidData(Some("Invalid field base type")))?;
 
-		if data.name == "Program" {
-			println!();
-		}
-
-		data.base = token;
-		match self.assembly.get_type(token) {
-			Some(base) => {
-				*self.ty = match base {
-					Type::Class(base) => match (base.namespace.as_str(), base.name.as_str()) {
-						("System", "ValueType") => Type::Struct(data),
-						_ => Type::Class(data),
-					},
-
-					Type::Struct(base) => match (base.namespace.as_str(), base.name.as_str()) {
-						("System", "Enum") => Type::Struct(data),
-						base => unimplemented!("{:?}", base),
-					},
-
-					Type::CustomUnknown(base) => Type::CustomUnknown(data),
-
-					base => unimplemented!("{:?}", base),
-				}
-			}
-
-			None => {
-				if data.namespace == "System" && data.name == "Object" {
-					*self.ty = Type::Class(data);
-					return Ok(());
-				}
-
-				if data.flags & raw::type_flags::INTERFACE != 0 {
-					*self.ty = Type::Interface(data);
-					return Ok(());
-				}
-
-				*self.ty = Type::CustomUnknown(data)
-			}
-		};
+		let types = Rc::get_mut(types).unwrap();
+		types[index] = Type::Uninitialized(TypeData {
+			base,
+			fields: vec![],
+			flags: def.flags(),
+			assembly: Rc::downgrade(&self.assembly),
+			name: self.strings.get_string(def.name()).to_string(),
+			namespace: self.strings.get_string(def.namespace()).to_string(),
+			token: MetadataToken::new(metadata_index, MetadataTokenKind::TypeDef),
+		});
 
 		Ok(())
 	}
 
-	fn read_fields(&self, data: &mut TypeData) -> Result<(), Error> {
-		let field_table = match self.tables.get_table::<FieldTable>()? {
-			Some(table) => table,
-			None => return Ok(()),
+	pub(crate) fn read_base(&self, index: usize, types: &mut Rc<[Type]>) -> Result<(), Error> {
+		let data = {
+			let types = Rc::get_mut(types).unwrap();
+			let mut ty = &mut types[index];
+
+			let Type::Uninitialized(data) = ty else { return Ok(()) };
+			std::mem::replace(data, TypeData::default())
 		};
 
-		unimplemented!()
+		let ctx = self.assembly.ctx.upgrade().unwrap();
+		let dependencies = &self.assembly.dependencies;
+		let type_refs = &self.assembly.type_refs;
+
+		macro_rules! set_ty {
+			($idx: expr, $types: expr, $val: expr) => {
+				set_ty!($idx, $types, $val, 0)
+			};
+
+			($idx: expr, $types: expr, $val: expr, $base: expr) => {{
+				drop($base);
+				let types = Rc::get_mut($types).unwrap();
+				types[$idx] = $val;
+				Ok(())
+			}};
+		}
+
+		if data.base.is_null() {
+			if data.flags & type_flags::INTERFACE != 0 {
+				return set_ty!(index, types, Type::Interface(data));
+			}
+
+			match (data.namespace.as_str(), data.name.as_str(), data.flags) {
+				("System", "Object", 0x102001) => {
+					return set_ty! {
+						index,
+						types,
+						Type::Class(data)
+					}
+				}
+				("", "<Module>", 0x0) => {
+					return set_ty! {
+						index,
+						types,
+						Type::CustomUnknown(data)
+					}
+				}
+				_ => unimplemented!("{:?}", data),
+			}
+		}
+
+		loop {
+			match get_type(data.base, &ctx, types, &dependencies, type_refs) {
+				Some(base_ref) => {
+					let base = base_ref.deref();
+					match base {
+						Type::Class(base) => {
+							return set_ty! {
+								index,
+								types,
+								Type::Class(data),
+								base_ref
+							}
+						}
+
+						Type::Uninitialized(base) => match base.token.token_kind() {
+							MetadataTokenKind::TypeDef => {
+								let index = base.token.index() - 1;
+
+								drop(base_ref);
+								self.read_base(index, types);
+							}
+
+							_ => unimplemented!("{:?}", base),
+						},
+
+						Type::CustomUnknown(_) => {
+							return set_ty! {
+								index,
+								types,
+								Type::CustomUnknown(data),
+								base_ref
+							}
+						}
+
+						_ => unimplemented!("{:?}", base),
+					}
+				}
+
+				None => {
+					return set_ty! {
+						index,
+						types,
+						Type::CustomUnknown(data)
+					}
+				}
+			}
+		}
 	}
 }

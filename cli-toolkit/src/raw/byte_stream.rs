@@ -28,8 +28,8 @@ mod private {
 	}
 
 	pub trait FromByteStream<'l>
-		where
-			Self: Sized,
+	where
+		Self: Sized,
 	{
 		fn from_byte_stream(stream: &'l mut ByteStream) -> Result<Self, Error>;
 	}
@@ -181,13 +181,17 @@ mod private {
 	pub struct AlignedBuffer<'l> {
 		len: usize,
 		data: *mut u8,
-		phantom: PhantomData<&'l u8>
+		phantom: PhantomData<&'l u8>,
 	}
 
 	impl AlignedBuffer<'_> {
 		fn alloc_new(len: usize) -> Self {
 			if len == 0 {
-				return Self { len, data: null_mut(), phantom: PhantomData };
+				return Self {
+					len,
+					data: null_mut(),
+					phantom: PhantomData,
+				};
 			}
 
 			let layout = Layout::from_size_align(len, 8).unwrap();

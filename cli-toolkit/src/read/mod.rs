@@ -1,3 +1,4 @@
+use lazy_static::lazy_static;
 use crate::raw::TableKind;
 
 mod assembly;

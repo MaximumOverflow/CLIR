@@ -1,27 +1,37 @@
+use crate::read::assembly::AssemblyReader;
 use crate::schema::{Assembly, Context};
 use std::path::{Path, PathBuf};
 use std::collections::HashMap;
 use crate::raw::AlignedBuffer;
 use std::iter::repeat_with;
 use crate::read::Error;
+use std::pin::Pin;
+use std::rc::Rc;
+use crate::utilities::get_mut_unchecked;
 
 pub struct ContextReader<'l> {
-	buffers: Vec<AlignedBuffer<'l>>,
-	context: Box<Context<'l>>,
+	context: Rc<Context>,
+	readers: Vec<AssemblyReader<'l>>,
 }
 
-impl<'l> Context<'l> {
-	pub fn from_assembly_list<T: TryInto<AlignedBuffer<'l>>>(
+impl Context {
+	pub fn from_assembly_list<'l, T: TryInto<AlignedBuffer<'l>>>(
 		assemblies: impl IntoIterator<Item = T>,
-	) -> Result<Box<Self>, Error>
+	) -> Result<Rc<Context>, Error>
 	where
 		Error: From<<T as TryInto<AlignedBuffer<'l>>>::Error>,
 	{
-		let mut buffers = vec![];
+		let mut readers = vec![];
 		for i in assemblies {
-			buffers.push(i.try_into()?);
+			readers.push(AssemblyReader::new(i.try_into()?)?)
 		}
-		Self::read(buffers)
+
+		let reader = ContextReader {
+			readers,
+			context: Rc::new(Context::default()),
+		};
+
+		reader.read()
 	}
 
 	pub(crate) fn default() -> Self {
@@ -30,37 +40,33 @@ impl<'l> Context<'l> {
 			assembly_map: HashMap::default(),
 		}
 	}
-
-	pub(crate) fn read(buffers: Vec<AlignedBuffer<'l>>) -> Result<Box<Self>, Error> {
-		let reader = ContextReader {
-			buffers,
-			context: Box::new(Context::default()),
-		};
-
-		reader.read()
-	}
 }
 
 impl<'l> ContextReader<'l> {
-	fn read(mut self) -> Result<Box<Context<'l>>, Error> {
-		self.context.assembly_vec = repeat_with(Assembly::default).take(self.buffers.len()).collect();
+	fn read(mut self) -> Result<Rc<Context>, Error> {
+		let mut_context = unsafe { get_mut_unchecked(&self.context) };
+		mut_context.assembly_vec = Vec::with_capacity(self.readers.len());
 
-		let assemblies = unsafe {
-			let ptr = self.context.assembly_vec.as_mut_ptr();
-			(0..self.context.assembly_vec.len()).map(move |i| {
-				let ass: &'l mut Assembly<'l> = std::mem::transmute(&mut *ptr.add(i));
-				ass
-			})
-		};
-
-		for (index, (assembly, bytes)) in assemblies.zip(self.buffers).enumerate() {
-			assembly.ctx = unsafe { &*(self.context.as_ref() as *const Context<'l>) };
-			let reader = Assembly::read(assembly, bytes)?;
-
+		for (index, reader) in self.readers.iter().enumerate() {
 			let ident = reader.get_ident()?;
-			self.context.assembly_map.insert(ident, index);
+			mut_context.assembly_map.insert(ident, index);
+		}
 
-			let _ = reader.read()?;
+		for reader in self.readers.iter() {
+			let mut assembly = Rc::new(Assembly::default());
+			let assembly = reader.read_assembly_definition(assembly)?;
+			mut_context.assembly_vec.push(assembly);
+		}
+
+		for (reader, assembly) in self.readers.iter().zip(mut_context.assembly_vec.iter().cloned()) {
+			{
+				let mut_assembly = unsafe { get_mut_unchecked(&assembly) };
+				mut_assembly.ctx = Rc::downgrade(&self.context);
+
+				reader.read_assembly_refs(mut_assembly);
+				reader.read_assembly_type_refs(mut_assembly);
+			}
+			reader.read_assembly_types(assembly);
 		}
 
 		Ok(self.context)

@@ -323,9 +323,16 @@ impl Debug for TableHeap<'_> {
 
 pub(crate) mod private {
 	use crate::raw::*;
-	pub trait MetadataHeap<'l> {
+	pub trait MetadataHeap<'l>
+	where
+		Self: Sized,
+	{
 		fn new(bytes: &'l [u8]) -> Self;
 		fn cli_identifier() -> &'static str;
 		fn idx_size(tables: &TableHeap) -> IndexSize;
+
+		fn empty() -> Self {
+			Self::new(&[])
+		}
 	}
 }

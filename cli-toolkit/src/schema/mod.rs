@@ -7,5 +7,5 @@ pub use types::*;
 pub use context::*;
 pub use assembly::*;
 
-use std::fmt::{Debug, Formatter};
 use std::ops::{Deref, DerefMut};
+use std::fmt::{Debug, Formatter};

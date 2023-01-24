@@ -1,9 +1,14 @@
+use std::cell::RefCell;
 use crate::raw::{MetadataToken, TableIndex, TypeFlags};
-use crate::schema::assembly::Assembly;
 use std::fmt::{Debug, Display, Formatter};
+use std::ops::Deref;
+use crate::schema::assembly::Assembly;
+use crate::utilities::IndexedRcRef;
+use std::rc::{Rc, Weak};
+use bitvec::mem::elts;
 
 #[derive(Debug)]
-pub enum Type<'l> {
+pub enum Type {
 	Void,
 	Char,
 	Int8,
@@ -18,31 +23,17 @@ pub enum Type<'l> {
 	Double,
 	Object,
 	String,
-	Enum(TypeData<'l>),
-	Class(TypeData<'l>),
-	Struct(TypeData<'l>),
-	Interface(TypeData<'l>),
+	Enum(TypeData),
+	Class(TypeData),
+	Struct(TypeData),
+	Interface(TypeData),
 
+	Uninitialized(TypeData),
+	CustomUnknown(TypeData),
 	NotLoaded(MetadataToken),
-	CustomUnknown(TypeData<'l>),
 }
 
-pub struct TypeData<'l> {
-	pub(crate) assembly: &'l Assembly<'l>,
-
-	pub(crate) name: String,
-	pub(crate) namespace: String,
-	pub(crate) flags: TypeFlags,
-	pub(crate) base: MetadataToken,
-	pub(crate) token: MetadataToken,
-	pub(crate) fields: Vec<TableIndex>,
-}
-
-pub struct Field<'l> {
-	parent: &'l Type<'l>,
-}
-
-impl Type<'_> {
+impl Type {
 	pub(crate) fn matches_name(&self, name: &str, namespace: &str) -> bool {
 		let (ty_name, ty_namespace) = match self {
 			Type::String => ("String", "System"),
@@ -59,7 +50,7 @@ impl Type<'_> {
 	}
 }
 
-impl Display for Type<'_> {
+impl Display for Type {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
 		match self {
 			Type::Class(data) => Display::fmt(data, f),
@@ -70,7 +61,20 @@ impl Display for Type<'_> {
 	}
 }
 
-impl Display for TypeData<'_> {
+pub type TypeRef = IndexedRcRef<Type, [Type]>;
+
+pub struct TypeData {
+	pub(crate) assembly: Weak<Assembly>,
+
+	pub(crate) name: String,
+	pub(crate) namespace: String,
+	pub(crate) flags: TypeFlags,
+	pub(crate) base: MetadataToken,
+	pub(crate) token: MetadataToken,
+	pub(crate) fields: Vec<TableIndex>,
+}
+
+impl Display for TypeData {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
 		match self.namespace.is_empty() {
 			true => f.write_str(&self.name),
@@ -79,17 +83,31 @@ impl Display for TypeData<'_> {
 	}
 }
 
-impl Debug for TypeData<'_> {
+impl Debug for TypeData {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-		let missing = &Type::NotLoaded(self.base);
-		let base = self.assembly.get_type(self.base).unwrap_or(missing);
+		let Some(assembly) = self.assembly.upgrade() else {
+			return f.write_str("null");
+		};
 
-		f.debug_struct("TypeData")
-			.field("token", &self.token)
-			.field("name", &self.name)
-			.field("namespace", &self.namespace)
-			.field("flags", &format_args!("0x{:X}", self.flags))
-			.field("base", &format_args!("{}", base))
-			.finish()
+		let missing = &Type::NotLoaded(self.base);
+		let base = assembly.get_type(self.base);
+
+		let mut f = f.debug_struct("TypeData");
+		f.field("token", &self.token);
+		f.field("name", &self.name);
+		f.field("namespace", &self.namespace);
+		f.field("flags", &format_args!("0x{:X}", self.flags));
+
+		let base = match base {
+			None => f.field("base", &format_args!("{}", missing)),
+			Some(ty) => f.field("base", &format_args!("{}", ty.deref())),
+		};
+
+		f.finish()
 	}
+}
+
+pub struct Field {
+	pub(crate) assembly: Weak<Assembly>,
+	pub(crate) parent: MetadataToken,
 }
